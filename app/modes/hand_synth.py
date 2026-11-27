@@ -113,9 +113,11 @@ class HandSynthMode:
         self._song_step = 0
         self._song_complete_flash = 0.0
 
-        # Stato Batteria Aerea (Air Drumstick Strike: velocità verticale verso il basso)
+        # Stato Batteria Aerea (Air Drumstick fluido con scia e cooldown per pad)
         self._drum_prev_tip: Dict[int, Optional[Tuple[int, int]]] = {0: None, 1: None}
-        self._drum_cooldown: Dict[int, float] = {0: 0.0, 1: 0.0}
+        self._drum_prev_pad: Dict[int, Optional[str]] = {0: None, 1: None}
+        self._drum_pad_cooldown: Dict[Tuple[int, str], float] = {}
+        self._drum_trails: List[List[Tuple[int, int]]] = [[], []]
         self._drum_pad_flash: Dict[str, float] = {}
         self._drum_waves: List[DrumWave] = []
         self._drum_hits = 0
@@ -509,6 +511,15 @@ class HandSynthMode:
     # =========================================================================
     # SUBMODE 3: BATTERIA AEREA (Air Drumstick Strike — colpo veloce verso il basso!)
     # =========================================================================
+    @staticmethod
+    def _dist_seg_point(p1: Tuple[int, int], p2: Tuple[int, int], c: Tuple[int, int]) -> float:
+        dx, dy = p2[0] - p1[0], p2[1] - p1[1]
+        l2 = dx * dx + dy * dy
+        if l2 < 1e-6:
+            return math.hypot(c[0] - p2[0], c[1] - p2[1])
+        t = max(0.0, min(1.0, ((c[0] - p1[0]) * dx + (c[1] - p1[1]) * dy) / l2))
+        return math.hypot(c[0] - (p1[0] + t * dx), c[1] - (p1[1] + t * dy))
+
     def _update_and_draw_drums(
         self,
         frame: np.ndarray,
@@ -518,59 +529,74 @@ class HandSynthMode:
     ) -> None:
         h, w = frame.shape[:2]
 
-        # 6 pad disposti ad arco ergonomico da batterista
-        pad_r = max(56, min(78, int(min(w, h) * 0.105)))
+        # 6 pad grandi e comodi disposti ad arco ergonomico da batterista
+        pad_r = max(62, min(86, int(min(w, h) * 0.115)))
         pads = [
-            ("crash", "CRASH", (int(w * 0.18), int(h * 0.30)), pad_r, COLOR_YELLOW),
-            ("clap", "CLAP", (int(w * 0.82), int(h * 0.30)), pad_r, COLOR_MAGENTA),
-            ("hihat", "HI-HAT", (int(w * 0.16), int(h * 0.58)), pad_r, COLOR_CYAN),
-            ("tom", "TOM", (int(w * 0.84), int(h * 0.58)), pad_r, COLOR_ORANGE),
-            ("snare", "SNARE", (int(w * 0.34), int(h * 0.78)), pad_r + 6, COLOR_GREEN),
-            ("kick", "KICK", (int(w * 0.66), int(h * 0.78)), pad_r + 10, COLOR_RED),
+            ("crash", "CRASH", (int(w * 0.17), int(h * 0.30)), pad_r, COLOR_YELLOW),
+            ("clap", "CLAP", (int(w * 0.83), int(h * 0.30)), pad_r, COLOR_MAGENTA),
+            ("hihat", "HI-HAT", (int(w * 0.15), int(h * 0.58)), pad_r, COLOR_CYAN),
+            ("tom", "TOM", (int(w * 0.85), int(h * 0.58)), pad_r, COLOR_ORANGE),
+            ("snare", "SNARE", (int(w * 0.34), int(h * 0.78)), pad_r + 8, COLOR_GREEN),
+            ("kick", "KICK", (int(w * 0.66), int(h * 0.78)), pad_r + 12, COLOR_RED),
         ]
 
-        # Decadimento flash dei pad
+        # Decadimento flash dei pad e cooldown per coppia (mano, pad)
         for pid in list(self._drum_pad_flash.keys()):
             self._drum_pad_flash[pid] -= dt
             if self._drum_pad_flash[pid] <= 0:
                 del self._drum_pad_flash[pid]
+        for key in list(self._drum_pad_cooldown.keys()):
+            self._drum_pad_cooldown[key] -= dt
+            if self._drum_pad_cooldown[key] <= 0:
+                del self._drum_pad_cooldown[key]
 
-        # Calcola le punte delle bacchette virtuali e rileva il COLPO VERSO IL BASSO (Strike!)
+        # Calcola le punte delle bacchette virtuali con rilevamento super fluido
         stick_tips: List[Tuple[Tuple[int, int], Tuple[int, int], float]] = []
         for h_idx in range(2):
-            self._drum_cooldown[h_idx] = max(0.0, self._drum_cooldown[h_idx] - dt)
             if h_idx >= len(hands):
                 self._drum_prev_tip[h_idx] = None
+                self._drum_prev_pad[h_idx] = None
+                if self._drum_trails[h_idx]:
+                    self._drum_trails[h_idx].pop(0)
                 continue
 
             hand = hands[h_idx]
             wrist = hand.landmarks_px[0]
-            # La bacchetta parte dal polso e si estende oltre la nocca dell'indice/medio (funziona anche a pugno chiuso!)
             knuckle = hand.landmarks_px[9]
             dx = knuckle[0] - wrist[0]
             dy = knuckle[1] - wrist[1]
-            tip_x = int(max(0, min(w - 1, wrist[0] + dx * 2.15)))
-            tip_y = int(max(0, min(h - 1, wrist[1] + dy * 2.15)))
+            tip_x = int(max(0, min(w - 1, wrist[0] + dx * 2.10)))
+            tip_y = int(max(0, min(h - 1, wrist[1] + dy * 2.10)))
             tip = (tip_x, tip_y)
+
+            self._drum_trails[h_idx].append(tip)
+            if len(self._drum_trails[h_idx]) > 8:
+                self._drum_trails[h_idx].pop(0)
 
             prev = self._drum_prev_tip[h_idx]
             vy = (tip_y - prev[1]) / max(0.001, dt) if prev is not None else 0.0
-            stick_tips.append((wrist, tip, vy))
+            speed = math.hypot(tip_x - prev[0], tip_y - prev[1]) / max(0.001, dt) if prev is not None else 0.0
+            stick_tips.append((wrist, tip, speed))
 
-            # Gesture dedicata: colpo deciso verso il basso (vy > 260 px/s) dentro un pad!
-            if self._drum_cooldown[h_idx] <= 0.0 and vy > 260.0:
-                for pid, _, center, radius, col in pads:
-                    if math.hypot(tip_x - center[0], tip_y - center[1]) <= radius + 24:
-                        vel = max(0.4, min(1.0, (vy - 220.0) / 950.0))
+            seg_start = prev if prev is not None else tip
+            current_pad: Optional[str] = None
+            for pid, _, center, radius, col in pads:
+                if self._dist_seg_point(seg_start, tip, center) <= radius + 22:
+                    current_pad = pid
+                    entered_pad = pid != self._drum_prev_pad[h_idx]
+                    down_strike = vy > 135.0
+                    if (h_idx, pid) not in self._drum_pad_cooldown and ((entered_pad and speed > 65.0) or down_strike):
+                        vel = max(0.45, min(1.0, max(speed, vy) / 850.0))
                         self.sound.play_drum(pid, velocity=vel)
-                        self._drum_pad_flash[pid] = 0.24
-                        self._drum_cooldown[h_idx] = 0.13
+                        self._drum_pad_flash[pid] = 0.22
+                        self._drum_pad_cooldown[(h_idx, pid)] = 0.095
                         self._drum_hits += 1
                         self._drum_waves.append(DrumWave(center[0], center[1], float(radius), radius + 95 * vel, col))
-                        self._emit_sparks(center[0], center[1], col, count=int(14 + 14 * vel))
-                        break
+                        self._emit_sparks(center[0], center[1], col, count=int(12 + 12 * vel))
+                    break
 
             self._drum_prev_tip[h_idx] = tip
+            self._drum_prev_pad[h_idx] = current_pad
 
         # Disegna i 6 pad della batteria
         for pid, label, (cx, cy), radius, col in pads:
@@ -582,33 +608,40 @@ class HandSynthMode:
             cv2.addWeighted(overlay, 0.62 if flash > 0 else 0.45, frame, 0.38 if flash > 0 else 0.55, 0, frame)
             cv2.circle(frame, (cx, cy), r, COLOR_WHITE if flash > 0.1 else col, 4 if flash > 0 else 3, cv2.LINE_AA)
             cv2.circle(frame, (cx, cy), int(r * 0.72), col, 1, cv2.LINE_AA)
-            put_text_centered(frame, label, (cx, cy), scale=0.72, color=(15, 20, 30) if flash > 0.12 else COLOR_WHITE, thickness=2, shadow=flash <= 0.12)
+            put_text_centered(frame, label, (cx, cy), scale=0.76, color=(15, 20, 30) if flash > 0.12 else COLOR_WHITE, thickness=2, shadow=flash <= 0.12)
 
         # Onde d'urto dei colpi
         alive_waves: List[DrumWave] = []
         for wave in self._drum_waves:
-            wave.radius += 520 * dt
+            wave.radius += 540 * dt
             if wave.radius < wave.max_radius:
                 cv2.circle(frame, (wave.x, wave.y), int(wave.radius), wave.color, 3, cv2.LINE_AA)
                 alive_waves.append(wave)
         self._drum_waves = alive_waves
+
+        # Scia fluida delle bacchette
+        for idx, trail in enumerate(self._drum_trails):
+            col = COLOR_CYAN if idx == 0 else COLOR_MAGENTA
+            for i in range(1, len(trail)):
+                th = max(2, int(10 * (i / len(trail))))
+                cv2.line(frame, trail[i - 1], trail[i], col, th, cv2.LINE_AA)
 
         # Disegna le bacchette neon + scheletri
         for idx, hand in enumerate(hands):
             accent = COLOR_CYAN if idx == 0 else COLOR_MAGENTA
             if debug_mode:
                 draw_hand_skeleton(frame, hand, accent=accent, show_ids=True)
-            wrist, tip, vy = stick_tips[idx]
-            glow_col = COLOR_YELLOW if vy > 260.0 else accent
+            wrist, tip, speed = stick_tips[idx]
+            glow_col = COLOR_YELLOW if speed > 220.0 else accent
             cv2.line(frame, wrist, tip, glow_col, 10, cv2.LINE_AA)
             cv2.line(frame, wrist, tip, COLOR_WHITE, 3, cv2.LINE_AA)
-            cv2.circle(frame, tip, 12, glow_col, -1, cv2.LINE_AA)
+            cv2.circle(frame, tip, 13, glow_col, -1, cv2.LINE_AA)
             cv2.circle(frame, tip, 6, COLOR_WHITE, -1, cv2.LINE_AA)
 
         # Contatore colpi al centro in alto
         put_text_centered(
             frame,
-            f"COLPI: {self._drum_hits}   |   Colpisci VERSO IL BASSO con le bacchette!",
+            f"COLPI: {self._drum_hits}   |   Colpisci i 6 pad con le bacchette neon!",
             (w // 2, 146),
             scale=0.60,
             color=COLOR_YELLOW,

@@ -132,10 +132,11 @@ class AirGraffitiMode:
             if debug_mode:
                 draw_hand_skeleton(frame, hand, accent=active_color, show_ids=True)
 
-        # Sovrapponi il canvas neon al video (effetto glow additivo)
+        # Sovrapponi il canvas neon al video (effetto glow) solo se c'e almeno un tratto
         gray = cv2.cvtColor(self._canvas, cv2.COLOR_BGR2GRAY)
         mask = gray > 5
-        frame[mask] = cv2.addWeighted(frame[mask], 0.25, self._canvas[mask], 0.95, 0)
+        if np.any(mask):
+            frame[mask] = cv2.addWeighted(frame[mask], 0.25, self._canvas[mask], 0.95, 0)
 
         # Gestisci pulsanti tavolozza
         hit = self.dwell.update_and_draw(frame, buttons, hands, dt)

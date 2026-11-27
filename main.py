@@ -1,8 +1,8 @@
 """IIS Galilei - Di Palo (Salerno) — AI Hand & Face Lab (Kiosk 100% Touch-Free).
 
 Progettato per schermi grandi (60"+) con webcam sopra:
-tutta la navigazione avviene con l'indice (Dwell-to-Click), senza tastiera!
-I tasti rapidi (0/H, 1-6, D, R, F, M, Q/ESC) restano comunque attivi come backup.
+- Navigazione stile Apple Vision Pro (Punta + PINCH) + supporto Mouse + Tastiera backup.
+- Display gestito via SDL2 (pygame) per un vero Fullscreen senza barra bianca su Mac e Windows!
 """
 
 from __future__ import annotations
@@ -13,6 +13,8 @@ import time
 from pathlib import Path
 
 import cv2
+import numpy as np
+import pygame
 
 from app.dwell_ui import (
     DwellButton,
@@ -74,6 +76,16 @@ def open_camera(camera_idx: int, width: int, height: int) -> cv2.VideoCapture:
     return cap
 
 
+def create_display(is_fullscreen: bool, width: int, height: int) -> pygame.Surface:
+    """Crea la finestra SDL2 (vero fullscreen senza barra bianca su macOS e Windows)."""
+    if is_fullscreen:
+        screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.DOUBLEBUF)
+    else:
+        screen = pygame.display.set_mode((width, height), pygame.RESIZABLE | pygame.DOUBLEBUF)
+    pygame.display.set_caption(WINDOW_NAME)
+    return screen
+
+
 def main() -> int:
     args = parse_args()
     project_root = get_base_dir()
@@ -82,6 +94,8 @@ def main() -> int:
     face_model_path = project_root / "models" / "face_landmarker.task"
 
     sound = SoundEngine()
+    pygame.display.init()
+
     tracker = HandTracker(model_path=hand_model_path, max_num_hands=2)
     home_menu = HomeMenuScreen(sound)
     nav_dwell = DwellController(sound)
@@ -98,7 +112,7 @@ def main() -> int:
         9: AirGraffitiMode(sound),
         10: ObjectHuntMode(sound, model_path=person_model_path),
     }
-    active_mode = 0  # 0 = Menu Home touch-free (6 card giganti)
+    active_mode = 0  # 0 = Menu Home 5x2 touch-free
     debug_mode = False
     is_fullscreen = args.fullscreen
 
@@ -118,29 +132,70 @@ def main() -> int:
         sound.play("switch")
 
     cap = open_camera(args.camera, args.width, args.height)
-
-    # WINDOW_FREERATIO + WINDOW_GUI_NORMAL eliminano la banda bianca superiore in fullscreen!
-    win_flags = cv2.WINDOW_NORMAL | cv2.WINDOW_FREERATIO | cv2.WINDOW_GUI_NORMAL
-    cv2.namedWindow(WINDOW_NAME, win_flags)
-    cv2.setMouseCallback(WINDOW_NAME, on_mouse_event)
-    cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_ASPECT_RATIO, cv2.WINDOW_FREERATIO)
-    if is_fullscreen:
-        cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    else:
-        cv2.resizeWindow(WINDOW_NAME, args.width, args.height)
+    screen = create_display(is_fullscreen, args.width, args.height)
 
     prev_time = time.perf_counter()
     fps_smooth = 30.0
     start_time = prev_time
+    running = True
+    frame_w, frame_h = args.width, args.height
 
     try:
-        while True:
+        while running:
+            # Gestione eventi SDL2 (Mouse mappato alla risoluzione del frame + Tastiera backup)
+            win_w, win_h = screen.get_size()
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    running = False
+                elif ev.type == pygame.VIDEORESIZE and not is_fullscreen:
+                    screen = pygame.display.set_mode((ev.w, ev.h), pygame.RESIZABLE | pygame.DOUBLEBUF)
+                elif ev.type == pygame.MOUSEMOTION:
+                    fx = int(ev.pos[0] * frame_w / max(1, win_w))
+                    fy = int(ev.pos[1] * frame_h / max(1, win_h))
+                    on_mouse_event(cv2.EVENT_MOUSEMOVE, fx, fy, 0, None)
+                elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                    fx = int(ev.pos[0] * frame_w / max(1, win_w))
+                    fy = int(ev.pos[1] * frame_h / max(1, win_h))
+                    on_mouse_event(cv2.EVENT_LBUTTONDOWN, fx, fy, 0, None)
+                elif ev.type == pygame.KEYDOWN:
+                    k = ev.key
+                    if k in (pygame.K_q, pygame.K_ESCAPE):
+                        running = False
+                    elif k in (pygame.K_0, pygame.K_h):
+                        switch_mode(0)
+                    elif pygame.K_1 <= k <= pygame.K_9:
+                        switch_mode(k - pygame.K_0)
+                    elif k == pygame.K_a:
+                        switch_mode(10)
+                    elif k == pygame.K_d:
+                        debug_mode = not debug_mode
+                        sound.play("switch")
+                    elif k == pygame.K_r and active_mode in modes:
+                        modes[active_mode].reset()
+                        sound.play("go")
+                    elif k == pygame.K_m:
+                        sound.toggle_mute()
+                    elif k == pygame.K_f:
+                        is_fullscreen = not is_fullscreen
+                        screen = create_display(is_fullscreen, args.width, args.height)
+                    elif active_mode in modes:
+                        # Passa il carattere ASCII alla modalita attiva (es. SPAZIO, P, G, T, C, +, -)
+                        ch = ev.unicode
+                        if ch:
+                            modes[active_mode].handle_key(ord(ch))
+                        elif k == pygame.K_SPACE:
+                            modes[active_mode].handle_key(ord(" "))
+
+            if not running:
+                break
+
             ok, frame = cap.read()
             if not ok or frame is None:
                 continue
 
             # Effetto specchio naturale per chi e davanti al 60 pollici
             frame = cv2.flip(frame, 1)
+            frame_h, frame_w = frame.shape[:2]
 
             now = time.perf_counter()
             dt = min(0.05, max(0.001, now - prev_time))
@@ -150,10 +205,10 @@ def main() -> int:
 
             hands = tracker.detect(frame, timestamp_ms)
 
-            # Aggiorna e disegna Menu Home (0) oppure Modalita attiva (1..6)
+            # Aggiorna e disegna Menu Home (0) oppure Modalita attiva (1..10)
             if active_mode == 0:
                 chosen = home_menu.update_and_draw(frame, hands, dt)
-                extra_hint = "Punta su una scheda e fai PINCH (pollice + indice) per iniziare!"
+                extra_hint = "Punta su una scheda e fai PINCH (o clicca col mouse) per iniziare!"
                 if chosen is not None and chosen in modes:
                     switch_mode(chosen)
             else:
@@ -164,9 +219,9 @@ def main() -> int:
             # HUD globale
             draw_top_bar(frame, active_mode, fps_smooth, sound.muted, debug_mode)
 
-            # Pulsanti touch-free in barra superiore (MENU, RESET, X-RAY)
+            # Pulsanti barra superiore (MENU, RESET, X-RAY)
             if active_mode != 0:
-                top_specs = get_top_bar_buttons(frame.shape[1], active_mode, debug_mode)
+                top_specs = get_top_bar_buttons(frame_w, active_mode, debug_mode)
                 top_btns = [
                     DwellButton(
                         btn_id=bid,
@@ -194,33 +249,14 @@ def main() -> int:
             draw_bottom_hints(frame, extra_hint)
             clear_unhandled_mouse_click()
 
-            cv2.imshow(WINDOW_NAME, frame)
-
-            # Backup tastiera (opzionale per il tecnico)
-            key = cv2.waitKey(1) & 0xFF
-            if key in (ord("q"), ord("Q"), 27):
-                break
-            elif key in (ord("0"), ord("h"), ord("H")):
-                switch_mode(0)
-            elif key in (ord("1"), ord("2"), ord("3"), ord("4"), ord("5"), ord("6"), ord("7"), ord("8"), ord("9")):
-                switch_mode(int(chr(key)))
-            elif key == ord("a") or key == ord("A"):
-                switch_mode(10)
-            elif key in (ord("d"), ord("D")):
-                debug_mode = not debug_mode
-                sound.play("switch")
-            elif key in (ord("r"), ord("R")) and active_mode in modes:
-                modes[active_mode].reset()
-                sound.play("go")
-            elif key in (ord("m"), ord("M")):
-                sound.toggle_mute()
-            elif key in (ord("f"), ord("F")):
-                is_fullscreen = not is_fullscreen
-                prop = cv2.WINDOW_FULLSCREEN if is_fullscreen else cv2.WINDOW_NORMAL
-                cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, prop)
-                cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_ASPECT_RATIO, cv2.WINDOW_FREERATIO)
-            elif key != 255 and active_mode in modes:
-                modes[active_mode].handle_key(key)
+            # Rendering su finestra SDL2 (vero fullscreen senza barra bianca!)
+            win_w, win_h = screen.get_size()
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            surf = pygame.image.frombuffer(frame_rgb.tobytes(), (frame_w, frame_h), "RGB")
+            if (win_w, win_h) != (frame_w, frame_h):
+                surf = pygame.transform.scale(surf, (win_w, win_h))
+            screen.blit(surf, (0, 0))
+            pygame.display.flip()
     finally:
         cap.release()
         tracker.close()
@@ -228,7 +264,7 @@ def main() -> int:
             if hasattr(m, "close"):
                 m.close()
         sound.close()
-        cv2.destroyAllWindows()
+        pygame.display.quit()
 
     return 0
 

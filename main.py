@@ -17,12 +17,16 @@ import cv2
 from app.dwell_ui import DwellButton, DwellController, HomeMenuScreen
 from app.hand_tracker import HandTracker
 from app.hud import draw_bottom_hints, draw_top_bar, draw_xray_panel, get_top_bar_buttons
+from app.modes.air_graffiti import AirGraffitiMode
 from app.modes.attendance_counter import AttendanceCounterMode
 from app.modes.face_emoji import FaceEmojiMode
 from app.modes.fruit_ninja import FruitNinjaMode
 from app.modes.hand_synth import HandSynthMode
+from app.modes.neon_pong import NeonPongMode
+from app.modes.object_hunt import ObjectHuntMode
 from app.modes.rps_game import RPSGameMode
 from app.modes.stark_hud import StarkHUDMode
+from app.modes.superpowers import SuperpowersMode
 from app.sound_engine import SoundEngine
 
 WINDOW_NAME = "IIS Galilei - Di Palo (Salerno) | AI Hand & Face Lab"
@@ -83,6 +87,10 @@ def main() -> int:
         4: StarkHUDMode(sound),
         5: AttendanceCounterMode(sound, model_path=person_model_path),
         6: FaceEmojiMode(sound, model_path=face_model_path),
+        7: NeonPongMode(sound),
+        8: SuperpowersMode(sound),
+        9: AirGraffitiMode(sound),
+        10: ObjectHuntMode(sound, model_path=person_model_path),
     }
     active_mode = 0  # 0 = Menu Home touch-free (6 card giganti)
     debug_mode = False
@@ -105,7 +113,10 @@ def main() -> int:
 
     cap = open_camera(args.camera, args.width, args.height)
 
-    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+    # WINDOW_FREERATIO + WINDOW_GUI_NORMAL eliminano la banda bianca superiore in fullscreen!
+    win_flags = cv2.WINDOW_NORMAL | cv2.WINDOW_FREERATIO | cv2.WINDOW_GUI_NORMAL
+    cv2.namedWindow(WINDOW_NAME, win_flags)
+    cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_ASPECT_RATIO, cv2.WINDOW_FREERATIO)
     if is_fullscreen:
         cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     else:
@@ -183,8 +194,10 @@ def main() -> int:
                 break
             elif key in (ord("0"), ord("h"), ord("H")):
                 switch_mode(0)
-            elif key in (ord("1"), ord("2"), ord("3"), ord("4"), ord("5"), ord("6")):
+            elif key in (ord("1"), ord("2"), ord("3"), ord("4"), ord("5"), ord("6"), ord("7"), ord("8"), ord("9")):
                 switch_mode(int(chr(key)))
+            elif key == ord("a") or key == ord("A"):
+                switch_mode(10)
             elif key in (ord("d"), ord("D")):
                 debug_mode = not debug_mode
                 sound.play("switch")
@@ -197,6 +210,7 @@ def main() -> int:
                 is_fullscreen = not is_fullscreen
                 prop = cv2.WINDOW_FULLSCREEN if is_fullscreen else cv2.WINDOW_NORMAL
                 cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, prop)
+                cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_ASPECT_RATIO, cv2.WINDOW_FREERATIO)
             elif key != 255 and active_mode in modes:
                 modes[active_mode].handle_key(key)
     finally:

@@ -190,15 +190,19 @@ class DwellController:
 
 
 class HomeMenuScreen:
-    """Schermata Home olografica a 6 grandi card per scegliere l'app con la mano."""
+    """Schermata Home olografica a 10 card (griglia 5x2) per scegliere l'app con Punta + PINCH."""
 
     CARDS = [
-        (1, "CYBER SLICE", "Taglia le sfere tech con l'indice", COLOR_GREEN),
-        (2, "MORRA AI", "Sfida l'AI a Sasso-Carta-Forbici", COLOR_MAGENTA),
-        (3, "MUSIC STUDIO", "DJ 4-Zone · Pianoforte · Batteria", COLOR_CYAN),
-        (4, "STARK HUD", "Finestre olografiche stile Iron Man", COLOR_ORANGE),
-        (5, "CONTA PRESENTI", "Appello AI della classe in diretta", COLOR_YELLOW),
-        (6, "FACE EMOJI", "Emoji animate sulle espressioni!", (120, 220, 255)),
+        (1, "CYBER SLICE", "Taglia le sfere tech!", COLOR_GREEN),
+        (2, "MORRA AI", "Sasso-Carta-Forbici auto", COLOR_MAGENTA),
+        (3, "MUSIC STUDIO", "DJ · Piano · Batteria", COLOR_CYAN),
+        (4, "STARK HUD", "Finestre stile Iron Man", COLOR_ORANGE),
+        (5, "PRESENTI", "Appello AI della classe", COLOR_YELLOW),
+        (6, "FACE EMOJI", "Emoji + Photo Booth!", (120, 220, 255)),
+        (7, "NEON PONG", "Sfida 1 vs 1 o vs AI", COLOR_CYAN),
+        (8, "SUPERPOTERI", "Kamehameha & Repulsor", COLOR_ORANGE),
+        (9, "AIR GRAFFITI", "Lavagna Neon in aria", COLOR_MAGENTA),
+        (10, "CACCIA OGGETTI", "Trova oggetti in 12s!", COLOR_GREEN),
     ]
 
     def __init__(self, sound: SoundEngine) -> None:
@@ -213,39 +217,37 @@ class HomeMenuScreen:
         hands: List[HandData],
         dt: float,
     ) -> Optional[int]:
-        """Disegna il menu Home; restituisce l'ID modalita (1..6) quando selezionata."""
+        """Disegna il menu Home 5x2; restituisce l'ID modalita (1..10) quando selezionata."""
         h, w = frame.shape[:2]
 
-        # Leggera patina scura per far risaltare le 6 card sul proiettore / 60"
         overlay = np.full_like(frame, (10, 14, 24))
         cv2.addWeighted(overlay, 0.42, frame, 0.58, 0, frame)
 
-        # Intestazione centrale
         cx = w // 2
         put_text_centered(
             frame,
             "SCEGLI UN'ESPERIENZA AI CON LA MANO",
-            (cx, 108),
-            scale=0.98,
+            (cx, 106),
+            scale=0.96,
             color=COLOR_WHITE,
             thickness=2,
         )
         put_text_centered(
             frame,
             "Punta su una scheda e fai PINCH (unisci pollice + indice) per aprire!",
-            (cx, 142),
-            scale=0.56,
+            (cx, 138),
+            scale=0.55,
             color=COLOR_CYAN,
             thickness=1,
             shadow=False,
         )
 
-        # Griglia 3 x 2 di card giganti
-        cols, rows = 3, 2
-        margin_x = max(36, int(w * 0.04))
-        top_y = 172
-        bot_y = h - 58
-        gap_x, gap_y = 22, 22
+        # Griglia 5 x 2 di card ben leggibili sul 60 pollici
+        cols, rows = 5, 2
+        margin_x = max(24, int(w * 0.025))
+        top_y = 166
+        bot_y = h - 54
+        gap_x, gap_y = 14, 18
         card_w = (w - 2 * margin_x - (cols - 1) * gap_x) // cols
         card_h = (bot_y - top_y - (rows - 1) * gap_y) // rows
 
@@ -267,9 +269,8 @@ class HomeMenuScreen:
                     label=title,
                     subtitle=sub,
                     color=col,
-                    dwell_sec=0.52,
                     active=True,
-                    label_scale=0.88,
+                    label_scale=0.68,
                 )
             )
 

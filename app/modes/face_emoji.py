@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import math
 import time
 from pathlib import Path
@@ -64,6 +65,49 @@ class FaceEmojiMode:
     def reset(self) -> None:
         self.style = "emoji"
         self.dwell.reset()
+        self._photo_countdown = 0.0
+        self._photo_last_sec = 0
+        self._peace_hold = 0.0
+        self._flash_alpha = 0.0
+        self._saved_banner = 0.0
+
+    def _start_photo_countdown(self) -> None:
+        if self._photo_countdown <= 0.0:
+            self._photo_countdown = 3.0
+            self._photo_last_sec = 4
+            self._peace_hold = 0.0
+
+    def _save_photobooth(self, frame: np.ndarray) -> None:
+        out_dir = Path.cwd() / "foto_orientamento"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        shot = frame.copy()
+        sh, sw = shot.shape[:2]
+        # Cornice ricordo IIS Galilei - Di Palo in basso nella foto salvata
+        cv2.rectangle(shot, (0, sh - 68), (sw, sh), (16, 22, 36), -1)
+        cv2.line(shot, (0, sh - 68), (sw, sh - 68), COLOR_CYAN, 3)
+        put_text_centered(
+            shot,
+            "OPEN DAY  ·  IIS GALILEI - DI PALO (SALERNO)  ·  INFORMATICA",
+            (sw // 2, sh - 40),
+            scale=0.68,
+            color=COLOR_WHITE,
+            thickness=2,
+            shadow=False,
+        )
+        put_text_centered(
+            shot,
+            "galileidipalo.edu.it",
+            (sw // 2, sh - 15),
+            scale=0.48,
+            color=COLOR_CYAN,
+            thickness=1,
+            shadow=False,
+        )
+        cv2.imwrite(str(out_dir / f"photobooth_galilei_{stamp}.png"), shot)
+        self._flash_alpha = 0.92
+        self._saved_banner = 2.2
+        self.sound.play("win")
 
     def handle_key(self, key: int) -> None:
         if key == ord(" "):
@@ -334,13 +378,51 @@ class FaceEmojiMode:
                 thickness=2,
             )
 
-        # 3 pulsanti touch-free in alto al centro per cambiare stile avatar col dito!
+        # Gesto ✌️ (FORBICI) tenuto 0.5s -> avvia automaticamente il Photo Booth 3-2-1!
+        peace_active = any(hd.gesture == "FORBICI" for hd in hands)
+        if self._photo_countdown <= 0.0 and self._saved_banner <= 0.0:
+            if peace_active:
+                self._peace_hold += dt
+                if self._peace_hold >= 0.5:
+                    self._start_photo_countdown()
+            else:
+                self._peace_hold = max(0.0, self._peace_hold - dt * 2)
+
+        # Gestione conto alla rovescia Photo Booth
+        if self._photo_countdown > 0.0:
+            self._photo_countdown -= dt
+            sec = int(self._photo_countdown) + 1
+            if 1 <= sec <= 3 and sec < self._photo_last_sec:
+                self._photo_last_sec = sec
+                self.sound.play("beep")
+            if self._photo_countdown <= 0.0:
+                self._photo_countdown = 0.0
+                self._save_photobooth(frame)
+            else:
+                cx, cy = w // 2, h // 2
+                cv2.circle(frame, (cx, cy), 86, (18, 22, 34), -1, cv2.LINE_AA)
+                cv2.circle(frame, (cx, cy), 86, COLOR_YELLOW, 5, cv2.LINE_AA)
+                put_text_centered(frame, str(sec), (cx, cy), scale=3.2, color=COLOR_YELLOW, thickness=6)
+                put_text_centered(frame, "SORRIDI! PHOTO BOOTH...", (cx, cy + 120), scale=0.78, color=COLOR_WHITE, thickness=2)
+
+        # Flash fotografico + conferma salvataggio
+        if self._flash_alpha > 0.0:
+            self._flash_alpha = max(0.0, self._flash_alpha - dt * 2.2)
+            white = np.full_like(frame, 255)
+            cv2.addWeighted(white, self._flash_alpha, frame, 1.0 - self._flash_alpha, 0, frame)
+        if self._saved_banner > 0.0:
+            self._saved_banner = max(0.0, self._saved_banner - dt)
+            draw_panel(frame, w // 2 - 250, h - 115, w // 2 + 250, h - 50, border_color=COLOR_GREEN, alpha=0.88, thickness=2)
+            put_text_centered(frame, "FOTO RICORDO SALVATA IN foto_orientamento/ !", (w // 2, h - 82), scale=0.60, color=COLOR_GREEN, thickness=2)
+
+        # 3 pulsanti stile avatar + pulsante SCATTA FOTO (Punta + PINCH)
         style_specs = [
             ("emoji", "EMOJI", COLOR_YELLOW),
             ("robot", "ROBOT", COLOR_CYAN),
             ("alien", "ALIEN", COLOR_GREEN),
+            ("photo", "SCATTA FOTO", COLOR_MAGENTA),
         ]
-        tw, gap = 155, 12
+        tw, gap = 152, 10
         total_w = len(style_specs) * tw + (len(style_specs) - 1) * gap
         sx = (w - total_w) // 2
         buttons = [
@@ -352,9 +434,8 @@ class FaceEmojiMode:
                 y2=118,
                 label=lbl,
                 color=col,
-                dwell_sec=0.55,
-                active=(sid == self.style),
-                label_scale=0.58,
+                active=(sid == self.style or sid == "photo"),
+                label_scale=0.52,
             )
             for i, (sid, lbl, col) in enumerate(style_specs)
         ]
@@ -362,8 +443,10 @@ class FaceEmojiMode:
         hit = self.dwell.update_and_draw(frame, buttons, hands, dt)
         if hit in self.STYLES:
             self.style = hit
+        elif hit == "photo":
+            self._start_photo_countdown()
 
-        return f"Volti rilevati: {faces_count}/4  |  Sorridi, fai l'occhiolino o apri la bocca! Punta in alto per cambiare avatar"
+        return f"Volti: {faces_count}/4  |  Fai il gesto V (Pace) o PINCH su SCATTA FOTO per la foto ricordo Galilei - Di Palo!"
 
     def close(self) -> None:
         self._landmarker.close()

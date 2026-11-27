@@ -30,6 +30,7 @@ from app.modes.attendance_counter import AttendanceCounterMode
 from app.modes.face_emoji import FaceEmojiMode
 from app.modes.fruit_ninja import FruitNinjaMode
 from app.modes.hand_synth import HandSynthMode
+from app.modes.neon_drive_3d import NeonDrive3DMode
 from app.modes.neon_pong import NeonPongMode
 from app.modes.object_hunt import ObjectHuntMode
 from app.modes.rps_game import RPSGameMode
@@ -111,6 +112,7 @@ def main() -> int:
         8: SuperpowersMode(sound),
         9: AirGraffitiMode(sound),
         10: ObjectHuntMode(sound, model_path=person_model_path),
+        11: NeonDrive3DMode(sound),
     }
     active_mode = 0  # 0 = Menu Home 5x2 touch-free
     debug_mode = False
@@ -167,6 +169,8 @@ def main() -> int:
                         switch_mode(k - pygame.K_0)
                     elif k == pygame.K_a:
                         switch_mode(10)
+                    elif k == pygame.K_b:
+                        switch_mode(11)
                     elif k == pygame.K_d:
                         debug_mode = not debug_mode
                         sound.play("switch")

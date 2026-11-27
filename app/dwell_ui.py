@@ -226,7 +226,7 @@ class DwellController:
 
 
 class HomeMenuScreen:
-    """Schermata Home olografica a 10 card (griglia 5x2) per scegliere l'app con Punta + PINCH."""
+    """Schermata Home olografica a 11 card (griglia 4x3) per scegliere l'app con Punta + PINCH o Mouse."""
 
     CARDS = [
         (1, "CYBER SLICE", "Taglia le sfere tech!", COLOR_GREEN),
@@ -239,6 +239,7 @@ class HomeMenuScreen:
         (8, "SUPERPOTERI", "Kamehameha & Repulsor", COLOR_ORANGE),
         (9, "AIR GRAFFITI", "Lavagna Neon in aria", COLOR_MAGENTA),
         (10, "CACCIA OGGETTI", "Trova oggetti in 12s!", COLOR_GREEN),
+        (11, "NEON DRIVE 3D", "Guida 3D col Volante!", COLOR_YELLOW),
     ]
 
     def __init__(self, sound: SoundEngine) -> None:
@@ -253,7 +254,7 @@ class HomeMenuScreen:
         hands: List[HandData],
         dt: float,
     ) -> Optional[int]:
-        """Disegna il menu Home 5x2; restituisce l'ID modalita (1..10) quando selezionata."""
+        """Disegna il menu Home 4x3; restituisce l'ID modalita (1..11) quando selezionata."""
         h, w = frame.shape[:2]
 
         overlay = np.full_like(frame, (10, 14, 24))
@@ -263,27 +264,27 @@ class HomeMenuScreen:
         put_text_centered(
             frame,
             "SCEGLI UN'ESPERIENZA AI CON LA MANO",
-            (cx, 106),
-            scale=0.96,
+            (cx, 102),
+            scale=0.92,
             color=COLOR_WHITE,
             thickness=2,
         )
         put_text_centered(
             frame,
-            "Punta su una scheda e fai PINCH (unisci pollice + indice) per aprire!",
-            (cx, 138),
-            scale=0.55,
+            "Punta su una scheda e fai PINCH (o clicca col mouse) per aprire!",
+            (cx, 132),
+            scale=0.52,
             color=COLOR_CYAN,
             thickness=1,
             shadow=False,
         )
 
-        # Griglia 5 x 2 di card ben leggibili sul 60 pollici
-        cols, rows = 5, 2
-        margin_x = max(24, int(w * 0.025))
-        top_y = 166
-        bot_y = h - 54
-        gap_x, gap_y = 14, 18
+        # Griglia 4 x 3 (ultima riga centrata) ben leggibile sul 60 pollici
+        cols, rows = 4, 3
+        margin_x = max(28, int(w * 0.03))
+        top_y = 154
+        bot_y = h - 50
+        gap_x, gap_y = 16, 14
         card_w = (w - 2 * margin_x - (cols - 1) * gap_x) // cols
         card_h = (bot_y - top_y - (rows - 1) * gap_y) // rows
 
@@ -291,7 +292,10 @@ class HomeMenuScreen:
         for idx, (mode_id, title, sub, col) in enumerate(self.CARDS):
             r = idx // cols
             c = idx % cols
-            x1 = margin_x + c * (card_w + gap_x)
+            # Centra l'ultima riga se ha meno di 4 card
+            row_count = min(cols, len(self.CARDS) - r * cols)
+            row_offset = (cols - row_count) * (card_w + gap_x) // 2
+            x1 = margin_x + row_offset + c * (card_w + gap_x)
             y1 = top_y + r * (card_h + gap_y)
             x2 = x1 + card_w
             y2 = y1 + card_h

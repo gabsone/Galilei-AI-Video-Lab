@@ -94,6 +94,7 @@ jobs:
           - ``8`` **Superpoteri AR** (Kamehameha a 2 mani & Iron Man Repulsor)
           - ``9`` **Air Graffiti** (Lavagna neon in aria a 2 mani + gomma + salva)
           - ``10`` **Caccia agli Oggetti** (Sfida a tempo in classe su bottiglie, zaini, cellulari, libri...)
+          - ``11`` **Neon Drive 3D** (Corsa auto 3D Synthwave guidata col volante a 2 mani!)
           "@
 
           $exists = $false

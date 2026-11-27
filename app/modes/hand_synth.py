@@ -32,7 +32,7 @@ ITALIAN_NOTE_NAMES = [
     "DO", "DO#", "RE", "RE#", "MI", "FA", "FA#", "SOL", "SOL#", "LA", "LA#", "SI", "DO5"
 ]
 
-# Melodie guidate per il Pianoforte Aereo (indici nella scala cromatica C4=0 .. C5=12)
+# Melodie guidate per il Pianoforte Aereo (solo tasti bianchi giganti: DO=0, RE=2, MI=4, FA=5, SOL=7, LA=9, SI=11, DO5=12)
 GUIDED_SONGS: List[Tuple[str, List[int]]] = [
     ("LIBERO", []),
     (
@@ -41,7 +41,11 @@ GUIDED_SONGS: List[Tuple[str, List[int]]] = [
     ),
     (
         "SEVEN NATION ARMY",
-        [4, 4, 7, 4, 2, 0, 11, 4, 4, 7, 4, 2, 0, 2, 0, 11],
+        [9, 9, 12, 9, 7, 5, 4, 9, 9, 12, 9, 7, 5, 7, 5, 4],
+    ),
+    (
+        "FRA MARTINO",
+        [0, 2, 4, 0, 0, 2, 4, 0, 4, 5, 7, 4, 5, 7],
     ),
 ]
 
@@ -318,7 +322,7 @@ class HandSynthMode:
             cv2.circle(frame, (px, py), 12 if hand.is_pinching else 8, accent, 3, cv2.LINE_AA)
 
     # =========================================================================
-    # SUBMODE 2: PIANOFORTE AEREO GIOCABILE (Hover + Tap/Pinch + Guida Melodie)
+    # SUBMODE 2: PIANOFORTE / XILOFONO NEON A 8 TASTI GIGANTI (Tocco Istantaneo!)
     # =========================================================================
     def _update_and_draw_piano(
         self,
@@ -329,33 +333,32 @@ class HandSynthMode:
     ) -> None:
         h, w = frame.shape[:2]
 
-        kb_x1, kb_x2 = 44, w - 44
-        kb_y1, kb_y2 = int(h * 0.44), h - 62
+        # 8 tasti larghi a tutta larghezza (impossibili da mancare su un 60 pollici!)
+        kb_x1, kb_x2 = 34, w - 34
+        kb_y1, kb_y2 = int(h * 0.42), h - 58
         kb_w = kb_x2 - kb_x1
-        kb_h = kb_y2 - kb_y1
 
-        white_indices = [0, 2, 4, 5, 7, 9, 11, 12]
-        black_map = {1: 0, 3: 1, 6: 3, 8: 4, 10: 5}
+        white_indices = [0, 2, 4, 5, 7, 9, 11, 12]  # DO, RE, MI, FA, SOL, LA, SI, DO5
+        key_colors = [
+            (70, 80, 255),   # DO  - Rosso/Corallo
+            (40, 155, 255),  # RE  - Arancio
+            (40, 225, 255),  # MI  - Giallo
+            (90, 255, 130),  # FA  - Verde
+            (255, 220, 40),  # SOL - Ciano
+            (255, 140, 60),  # LA  - Blu elettrico
+            (230, 80, 255),  # SI  - Viola/Magenta
+            (130, 160, 255), # DO5 - Rosa neon
+        ]
         white_w = kb_w / len(white_indices)
-        black_w = white_w * 0.56
-        black_h = kb_h * 0.54
 
         white_rects: Dict[int, Tuple[int, int, int, int]] = {}
-        for pos, note_idx in enumerate(white_indices):
-            x1 = int(kb_x1 + pos * white_w)
-            x2 = int(kb_x1 + (pos + 1) * white_w) - 5
+        key_color_map: Dict[int, Tuple[int, int, int]] = {}
+        for pos, (note_idx, col) in enumerate(zip(white_indices, key_colors)):
+            x1 = int(kb_x1 + pos * white_w) + 3
+            x2 = int(kb_x1 + (pos + 1) * white_w) - 3
             white_rects[note_idx] = (x1, kb_y1, x2, kb_y2)
+            key_color_map[note_idx] = col
 
-        black_rects: Dict[int, Tuple[int, int, int, int]] = {}
-        for note_idx, after_white in black_map.items():
-            cx = kb_x1 + (after_white + 1) * white_w
-            x1 = int(cx - black_w / 2)
-            x2 = int(cx + black_w / 2)
-            black_rects[note_idx] = (x1, kb_y1, x2, int(kb_y1 + black_h))
-
-        all_rects = {**white_rects, **black_rects}
-
-        # Melodia guidata corrente
         song_name, song_notes = GUIDED_SONGS[self.song_idx]
         target_note = song_notes[self._song_step] if song_notes else -1
 
@@ -377,37 +380,26 @@ class HandSynthMode:
             hand = hands[h_idx]
             ix, iy = hand.index_tip
 
-            # Trova il tasto sotto il dito (priorità ai tasti neri)
             hit_key = -1
-            for note_idx, (x1, y1, x2, y2) in black_rects.items():
+            for note_idx, (x1, y1, x2, y2) in white_rects.items():
                 if x1 <= ix <= x2 and y1 <= iy <= y2:
                     hit_key = note_idx
                     break
-            if hit_key == -1:
-                for note_idx, (x1, y1, x2, y2) in white_rects.items():
-                    if x1 <= ix <= x2 and y1 <= iy <= y2:
-                        hit_key = note_idx
-                        break
 
             prev_y = self._piano_prev_y[h_idx]
             vy = (iy - prev_y) / max(0.001, dt) if prev_y is not None else 0.0
+            just_entered = hit_key != -1 and hit_key != self._piano_prev_key[h_idx]
             just_pinched = hand.is_pinching and not self._piano_prev_pinch[h_idx]
-            entered_from_top = (
-                hit_key != -1
-                and self._piano_prev_key[h_idx] == -1
-                and prev_y is not None
-                and prev_y < kb_y1 + 12
-            )
-            downward_tap = hit_key != -1 and vy > 210.0
+            soft_tap = hit_key != -1 and vy > 115.0
 
             if hit_key != -1:
                 hovered_keys.add(hit_key)
-                if self._piano_cooldown[h_idx] <= 0.0 and (just_pinched or downward_tap or entered_from_top):
-                    vel = min(1.0, max(0.6, abs(vy) / 520.0)) if downward_tap else 0.92
-                    self.sound.play_piano_note(hit_key, volume=vel)
-                    self._key_flash[hit_key] = 0.28
-                    self._piano_cooldown[h_idx] = 0.17
-                    col = COLOR_GREEN if hit_key == target_note else (COLOR_CYAN if h_idx == 0 else COLOR_MAGENTA)
+                # TOCCO ISTANTANEO appena entri nel tasto, oppure colpetto leggero / pinch per ribattere!
+                if self._piano_cooldown[h_idx] <= 0.0 and (just_entered or soft_tap or just_pinched):
+                    self.sound.play_piano_note(hit_key, volume=0.95)
+                    self._key_flash[hit_key] = 0.30
+                    self._piano_cooldown[h_idx] = 0.16
+                    col = COLOR_GREEN if hit_key == target_note else key_color_map[hit_key]
                     self._emit_sparks(ix, iy, col, count=14)
 
                     if song_notes and hit_key == target_note:
@@ -421,11 +413,11 @@ class HandSynthMode:
             self._piano_prev_pinch[h_idx] = hand.is_pinching
             self._piano_prev_key[h_idx] = hit_key
 
-        # Banner guida melodia sopra la tastiera (cliccabile col dito per cambiare canzone!)
+        # Banner guida melodia sopra la tastiera (tocco touch-free per cambiare canzone!)
         cx = w // 2
         if self._song_complete_flash > 0:
-            draw_panel(frame, cx - 260, 128, cx + 260, 182, border_color=COLOR_GREEN, alpha=0.84)
-            put_text_centered(frame, "MELODIA COMPLETATA! BRAVISSIMO!", (cx, 155), scale=0.72, color=COLOR_GREEN, thickness=2)
+            draw_panel(frame, cx - 270, 126, cx + 270, 180, border_color=COLOR_GREEN, alpha=0.86)
+            put_text_centered(frame, "MELODIA COMPLETATA! BRAVISSIMO!", (cx, 153), scale=0.72, color=COLOR_GREEN, thickness=2)
         else:
             song_label = (
                 f"MELODIA: {song_name} ({self._song_step + 1}/{len(song_notes)}) -> {ITALIAN_NOTE_NAMES[target_note]}"
@@ -434,13 +426,13 @@ class HandSynthMode:
             )
             guide_btn = DwellButton(
                 btn_id="next_song",
-                x1=cx - 285,
-                y1=126,
-                x2=cx + 285,
-                y2=180,
+                x1=cx - 295,
+                y1=124,
+                x2=cx + 295,
+                y2=178,
                 label=song_label,
                 color=COLOR_YELLOW if song_notes else COLOR_CYAN,
-                dwell_sec=0.60,
+                dwell_sec=0.50,
                 active=bool(song_notes),
                 label_scale=0.54,
             )
@@ -448,52 +440,52 @@ class HandSynthMode:
                 self.song_idx = (self.song_idx + 1) % len(GUIDED_SONGS)
                 self._song_step = 0
 
-        # Disegna tasti bianchi
+        # Disegna gli 8 tasti giganti stile Xilofono/Piano Neon
         for note_idx, (x1, y1, x2, y2) in white_rects.items():
+            base_col = key_color_map[note_idx]
             is_lit = note_idx in self._key_flash
             is_target = note_idx == target_note
             is_hover = note_idx in hovered_keys
+
             if is_lit:
-                bg, border, alpha = COLOR_CYAN, COLOR_WHITE, 0.88
+                bg, border, alpha = base_col, COLOR_WHITE, 0.90
             elif is_target:
-                bg, border, alpha = (40, 210, 255), COLOR_YELLOW, 0.80
+                bg, border, alpha = (35, 195, 255), COLOR_YELLOW, 0.78
             elif is_hover:
-                bg, border, alpha = (205, 240, 255), COLOR_CYAN, 0.72
+                bg, border, alpha = base_col, COLOR_WHITE, 0.52
             else:
-                bg, border, alpha = (225, 232, 245), (90, 100, 125), 0.56
+                bg, border, alpha = (24, 30, 46), base_col, 0.62
 
-            draw_panel(frame, x1, y1, x2, y2, bg_color=bg, border_color=border, alpha=alpha, thickness=3 if (is_lit or is_target or is_hover) else 2)
-            put_text_centered(frame, ITALIAN_NOTE_NAMES[note_idx], ((x1 + x2) // 2, y2 - 28), scale=0.72, color=(15, 20, 30), thickness=2, shadow=False)
+            draw_panel(
+                frame, x1, y1, x2, y2,
+                bg_color=bg, border_color=border, alpha=alpha,
+                thickness=4 if (is_lit or is_target) else 2,
+            )
+            # Fascia superiore colorata stile tasto musicale
+            cv2.rectangle(frame, (x1 + 3, y1 + 3), (x2 - 3, y1 + 20), base_col, -1)
+            put_text_centered(
+                frame,
+                ITALIAN_NOTE_NAMES[note_idx],
+                ((x1 + x2) // 2, y2 - 38),
+                scale=0.95,
+                color=(15, 20, 30) if (is_lit or is_target) else COLOR_WHITE,
+                thickness=2,
+                shadow=not (is_lit or is_target),
+            )
 
-        # Disegna tasti neri
-        for note_idx, (x1, y1, x2, y2) in black_rects.items():
-            is_lit = note_idx in self._key_flash
-            is_target = note_idx == target_note
-            is_hover = note_idx in hovered_keys
-            if is_lit:
-                bg, border = COLOR_MAGENTA, COLOR_WHITE
-            elif is_target:
-                bg, border = COLOR_ORANGE, COLOR_YELLOW
-            elif is_hover:
-                bg, border = (60, 45, 95), COLOR_MAGENTA
-            else:
-                bg, border = (16, 18, 28), (110, 120, 145)
-            draw_panel(frame, x1, y1, x2, y2, bg_color=bg, border_color=border, alpha=0.90, thickness=3 if (is_lit or is_target or is_hover) else 2)
-            put_text_centered(frame, ITALIAN_NOTE_NAMES[note_idx], ((x1 + x2) // 2, y2 - 20), scale=0.45, color=COLOR_WHITE, thickness=1, shadow=False)
-
-        # Freccia rimbalzante sul tasto guida!
-        if target_note in all_rects:
-            tx1, ty1, tx2, _ = all_rects[target_note]
-            bounce = int(math.sin(time.perf_counter() * 8.0) * 8)
+        # Freccia gialla rimbalzante sul tasto da suonare
+        if target_note in white_rects:
+            tx1, ty1, tx2, _ = white_rects[target_note]
+            bounce = int(math.sin(time.perf_counter() * 8.0) * 9)
             tx = (tx1 + tx2) // 2
-            ty = ty1 - 18 + bounce
-            pts = np.array([[tx - 16, ty - 18], [tx + 16, ty - 18], [tx, ty]], np.int32)
+            ty = ty1 - 16 + bounce
+            pts = np.array([[tx - 20, ty - 22], [tx + 20, ty - 22], [tx, ty]], np.int32)
             cv2.fillPoly(frame, [pts], COLOR_YELLOW, cv2.LINE_AA)
 
         for idx, hand in enumerate(hands):
-            accent = COLOR_YELLOW if hand.is_pinching else (COLOR_CYAN if idx == 0 else COLOR_MAGENTA)
+            accent = COLOR_CYAN if idx == 0 else COLOR_MAGENTA
             draw_hand_skeleton(frame, hand, accent=accent, show_ids=debug_mode)
-            cv2.circle(frame, hand.index_tip, 13, accent, 3, cv2.LINE_AA)
+            cv2.circle(frame, hand.index_tip, 15, COLOR_YELLOW, 3, cv2.LINE_AA)
 
     # =========================================================================
     # SUBMODE 3: BATTERIA AEREA (Air Drumstick Strike — colpo veloce verso il basso!)

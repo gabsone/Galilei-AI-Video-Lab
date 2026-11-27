@@ -148,13 +148,12 @@ def get_top_bar_buttons(w: int, active_mode: int, debug_mode: bool) -> List[Tupl
     """Restituisce i pulsanti touch-free della barra superiore (attivi quando active_mode != 0)."""
     if active_mode == 0:
         return []
-    # 3 pulsanti grandi e comodi da centrare su un 60 pollici!
-    btn_h = 46
-    y1, y2 = 10, 10 + btn_h
+    # 3 pulsanti grandi (54px di altezza) facilissimi da centrare su un 60 pollici!
+    y1, y2 = 6, 60
     buttons = [
-        ("nav_menu", w - 425, y1, w - 295, y2, "MENU", COLOR_CYAN, True),
-        ("nav_reset", w - 285, y1, w - 155, y2, "RESET", COLOR_GREEN, False),
-        ("nav_xray", w - 145, y1, w - 16, y2, "X-RAY", COLOR_YELLOW, debug_mode),
+        ("nav_menu", w - 445, y1, w - 305, y2, "MENU", COLOR_CYAN, True),
+        ("nav_reset", w - 295, y1, w - 155, y2, "RESET", COLOR_GREEN, False),
+        ("nav_xray", w - 145, y1, w - 12, y2, "X-RAY", COLOR_YELLOW, debug_mode),
     ]
     return buttons
 

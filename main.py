@@ -158,7 +158,7 @@ def main() -> int:
                         y2=y2,
                         label=lbl,
                         color=col,
-                        dwell_sec=0.60,
+                        dwell_sec=0.48,
                         active=act,
                         label_scale=0.56,
                     )

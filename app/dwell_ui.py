@@ -75,11 +75,15 @@ class DwellController:
                 del self._progress[bid]
 
         for btn in buttons:
+            # Tolleranza invisibile di +14px + accetta sia punta dell'indice che centro del palmo
+            pad = 14
             hovered_tip: Optional[Tuple[int, int]] = None
             for hand in hands:
-                ix, iy = hand.index_tip
-                if btn.x1 <= ix <= btn.x2 and btn.y1 <= iy <= btn.y2:
-                    hovered_tip = (ix, iy)
+                for pt in (hand.index_tip, hand.palm_center):
+                    if (btn.x1 - pad) <= pt[0] <= (btn.x2 + pad) and (btn.y1 - pad) <= pt[1] <= (btn.y2 + pad):
+                        hovered_tip = pt
+                        break
+                if hovered_tip is not None:
                     break
 
             if hovered_tip is not None and btn.btn_id not in self._cooldown:
@@ -90,11 +94,12 @@ class DwellController:
                 if prog >= 1.0 and triggered is None:
                     triggered = btn.btn_id
                     self._progress[btn.btn_id] = 0.0
-                    self._cooldown[btn.btn_id] = 0.75
+                    self._cooldown[btn.btn_id] = 0.70
                     self.sound.play("switch")
             else:
+                # Decadimento morbido anti-tremolio della mano
                 prev = self._progress.get(btn.btn_id, 0.0)
-                self._progress[btn.btn_id] = max(0.0, prev - dt * 2.4)
+                self._progress[btn.btn_id] = max(0.0, prev - dt * 0.85)
 
             prog = self._progress.get(btn.btn_id, 0.0)
             is_hover = hovered_tip is not None
@@ -243,7 +248,7 @@ class HomeMenuScreen:
                     label=title,
                     subtitle=sub,
                     color=col,
-                    dwell_sec=0.68,
+                    dwell_sec=0.52,
                     active=True,
                     label_scale=0.88,
                 )

@@ -36,9 +36,11 @@ LOSES_TO = {v: k for k, v in BEATS.items()}
 
 
 class RPSGameMode:
-    """Sfida Sasso-Carta-Forbici in tempo reale contro l'AI."""
+    """Sfida Sasso-Carta-Forbici in tempo reale contro l'AI (flusso 100% automatico!)."""
 
-    THROW_WINDOW_SEC = 1.0  # 1 secondo dopo il 3-2-1 per mostrare la mano comodamente
+    THROW_WINDOW_SEC = 1.0   # 1 secondo su "VIA!" per mostrare la mano comodamente
+    RESULT_PAUSE_SEC = 2.5   # Pausa di 2.5s sul risultato prima del round successivo automatico
+    AUTO_START_HOLD = 0.6    # Mostra una mano per 0.6s per avviare subito la sfida
 
     def __init__(self, sound: SoundEngine) -> None:
         self.sound = sound
@@ -50,7 +52,7 @@ class RPSGameMode:
         self.player_score = 0
         self.ai_score = 0
         self.ties = 0
-        self.state = "IDLE"  # IDLE -> COUNTDOWN -> THROW -> RESULT
+        self.state = "IDLE"  # IDLE -> COUNTDOWN -> THROW -> RESULT -> COUNTDOWN (loop automatico)
         self.state_start = time.perf_counter()
         self.last_beep_sec = -1
         self.player_move: Optional[str] = None
@@ -58,7 +60,7 @@ class RPSGameMode:
         self._last_seen_valid_move: Optional[str] = None
         self.outcome_text = ""
         self.outcome_color = COLOR_WHITE
-        self._thumb_hold = 0.0
+        self._hand_ready_hold = 0.0
 
     def start_round(self) -> None:
         self.state = "COUNTDOWN"
@@ -67,7 +69,7 @@ class RPSGameMode:
         self.player_move = None
         self.ai_move = None
         self._last_seen_valid_move = None
-        self._thumb_hold = 0.0
+        self._hand_ready_hold = 0.0
 
     def handle_key(self, key: int) -> None:
         if key == ord(" "):
@@ -150,16 +152,16 @@ class RPSGameMode:
         for hand in hands:
             draw_hand_skeleton(frame, hand, accent=COLOR_MAGENTA, show_ids=debug_mode)
 
-        # Avvio hands-free con POLLICE SU tenuto per 0.7s
-        if self.state in ("IDLE", "RESULT"):
-            if live_gesture == "POLLICE SU":
-                self._thumb_hold += dt
-                if self._thumb_hold >= 0.7:
+        # Avvio automatico appena una mano e davanti alla webcam!
+        if self.state == "IDLE":
+            if hands:
+                self._hand_ready_hold += dt
+                if self._hand_ready_hold >= self.AUTO_START_HOLD:
                     self.start_round()
             else:
-                self._thumb_hold = max(0.0, self._thumb_hold - dt * 2)
+                self._hand_ready_hold = max(0.0, self._hand_ready_hold - dt * 2)
 
-        # Gestione stati: COUNTDOWN (3s) -> THROW (1s "VIA!") -> RESULT
+        # Gestione stati: COUNTDOWN (3s) -> THROW (1s "VIA!") -> RESULT (2.5s) -> auto prossimo round
         if self.state == "COUNTDOWN":
             elapsed = now - self.state_start
             remaining = 3.0 - elapsed
@@ -175,11 +177,18 @@ class RPSGameMode:
                 self._last_seen_valid_move = live_valid_move
 
         elif self.state == "THROW":
-            # Aggiorna la mossa rilevata durante il secondo di grazia su "VIA!"
             if live_valid_move is not None:
                 self._last_seen_valid_move = live_valid_move
             if now - self.state_start >= self.THROW_WINDOW_SEC:
                 self._resolve_round(now)
+
+        elif self.state == "RESULT":
+            if now - self.state_start >= self.RESULT_PAUSE_SEC:
+                if hands:
+                    self.start_round()
+                else:
+                    self.state = "IDLE"
+                    self._hand_ready_hold = 0.0
 
         # Pannello segnapunti centrale in alto
         cx = w // 2
@@ -242,45 +251,38 @@ class RPSGameMode:
             cv2.rectangle(frame, (bx1, by), (bx2, by + 10), (45, 55, 70), -1)
             cv2.rectangle(frame, (bx1, by), (int(bx1 + (bx2 - bx1) * pct), by + 10), COLOR_GREEN, -1)
         elif self.state == "RESULT":
-            draw_panel(frame, cx - 215, cy + 35, cx + 215, cy + 115, border_color=self.outcome_color, alpha=0.86, thickness=3)
-            put_text_centered(frame, self.outcome_text, (cx, cy + 75), scale=1.05, color=self.outcome_color, thickness=3)
-            play_btn = DwellButton(
-                btn_id="play_rps",
-                x1=cx - 175,
-                y1=h - 122,
-                x2=cx + 175,
-                y2=h - 54,
-                label="GIOCA ANCORA!",
-                color=COLOR_GREEN,
-                dwell_sec=0.58,
-                active=True,
-                label_scale=0.72,
+            rem = max(0.0, self.RESULT_PAUSE_SEC - (now - self.state_start))
+            pct = rem / self.RESULT_PAUSE_SEC
+            draw_panel(frame, cx - 235, cy + 55, cx + 235, cy + 165, border_color=self.outcome_color, alpha=0.88, thickness=3)
+            put_text_centered(frame, self.outcome_text, (cx, cy + 95), scale=1.08, color=self.outcome_color, thickness=3)
+            put_text_centered(
+                frame,
+                f"Prossimo round automatico tra {rem:.1f}s...",
+                (cx, cy + 135),
+                scale=0.54,
+                color=COLOR_WHITE,
+                thickness=1,
+                shadow=False,
             )
-            if self.dwell.update_and_draw(frame, [play_btn], hands, dt) == "play_rps":
-                self.start_round()
+            bx1, bx2 = cx - 170, cx + 170
+            by = cy + 152
+            cv2.rectangle(frame, (bx1, by), (bx2, by + 6), (45, 55, 70), -1)
+            cv2.rectangle(frame, (bx1, by), (int(bx1 + (bx2 - bx1) * pct), by + 6), self.outcome_color, -1)
         else:
-            play_btn = DwellButton(
-                btn_id="play_rps",
-                x1=cx - 190,
-                y1=h - 126,
-                x2=cx + 190,
-                y2=h - 54,
-                label="INIZIA SFIDA!",
-                subtitle="Punta qui o fai POLLICE SU",
+            draw_panel(frame, cx - 255, h - 130, cx + 255, h - 56, border_color=COLOR_GREEN, alpha=0.80, thickness=2)
+            put_text_centered(
+                frame,
+                "MOSTRA LA MANO PER INIZIARE LA SFIDA!",
+                (cx, h - 94),
+                scale=0.66,
                 color=COLOR_GREEN,
-                dwell_sec=0.58,
-                active=True,
-                label_scale=0.72,
+                thickness=2,
             )
-            if self.dwell.update_and_draw(frame, [play_btn], hands, dt) == "play_rps":
-                self.start_round()
+            if self._hand_ready_hold > 0.03:
+                pct = min(1.0, self._hand_ready_hold / self.AUTO_START_HOLD)
+                bx1, bx2 = cx - 180, cx + 180
+                by = h - 66
+                cv2.rectangle(frame, (bx1, by), (bx2, by + 6), (45, 55, 70), -1)
+                cv2.rectangle(frame, (bx1, by), (int(bx1 + (bx2 - bx1) * pct), by + 6), COLOR_YELLOW, -1)
 
-        # Barra caricamento pollice su
-        if self._thumb_hold > 0.05 and self.state not in ("COUNTDOWN", "THROW"):
-            pct = min(1.0, self._thumb_hold / 0.7)
-            bx1, bx2 = cx - 120, cx + 120
-            by = h - 148
-            cv2.rectangle(frame, (bx1, by), (bx2, by + 10), (50, 60, 80), -1)
-            cv2.rectangle(frame, (bx1, by), (int(bx1 + (bx2 - bx1) * pct), by + 10), COLOR_GREEN, -1)
-
-        return "Punta su INIZIA SFIDA o fai POLLICE SU per giocare contro l'AI!"
+        return "Gioco 100% automatico: tieni la mano inquadrata e sfida l'AI round dopo round!"

@@ -135,7 +135,7 @@ def main() -> int:
             # Aggiorna e disegna Menu Home (0) oppure Modalita attiva (1..6)
             if active_mode == 0:
                 chosen = home_menu.update_and_draw(frame, hands, dt)
-                extra_hint = "Alza la mano e punta l'INDICE sulla scheda che vuoi provare!"
+                extra_hint = "Punta su una scheda e fai PINCH (pollice + indice) per iniziare!"
                 if chosen is not None and chosen in modes:
                     switch_mode(chosen)
             else:

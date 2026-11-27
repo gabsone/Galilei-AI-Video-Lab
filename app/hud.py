@@ -228,7 +228,7 @@ def draw_bottom_hints(frame: np.ndarray, extra_hint: str = "") -> None:
     """Barra inferiore pulita con guida gestuale + sito istituto."""
     h, w = frame.shape[:2]
     draw_panel(frame, 0, h - 38, w, h, bg_color=(12, 14, 22), border_color=(45, 55, 80), alpha=0.76, thickness=1)
-    text = extra_hint if extra_hint else "Punta l'INDICE sui pulsanti in alto per tornare al MENU o resettare"
+    text = extra_hint if extra_hint else "Punta e fai PINCH sui pulsanti in alto per MENU, RESET o X-RAY"
     cv2.putText(
         frame,
         text,

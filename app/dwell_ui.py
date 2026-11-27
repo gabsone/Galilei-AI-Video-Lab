@@ -41,16 +41,20 @@ class DwellButton:
 
 
 class DwellController:
-    """Gestisce l'hover con l'indice e il caricamento circolare per attivare pulsanti senza tastiera."""
+    """Gestisce i pulsanti touch-free stile Apple Vision Pro: Punta (hover) + PINCH per cliccare."""
+
+    PINCH_HOLD_SEC = 0.14  # Quasi istantaneo, filtra eventuali falsi positivi di 1-2 frame
 
     def __init__(self, sound: SoundEngine) -> None:
         self.sound = sound
         self._progress: Dict[str, float] = {}
         self._cooldown: Dict[str, float] = {}
+        self._armed: Dict[str, bool] = {}  # True se l'utente ha fatto hover con dita aperte prima del pinch
 
     def reset(self) -> None:
         self._progress.clear()
         self._cooldown.clear()
+        self._armed.clear()
 
     def update_and_draw(
         self,
@@ -59,11 +63,10 @@ class DwellController:
         hands: List[HandData],
         dt: float,
     ) -> Optional[str]:
-        """Aggiorna e disegna i pulsanti; restituisce btn_id se uno viene attivato."""
+        """Aggiorna e disegna i pulsanti; clicca solo con Punta + PINCH intenzionale."""
         triggered: Optional[str] = None
-        cursor_rings: List[Tuple[Tuple[int, int], float, Tuple[int, int, int]]] = []
+        cursor_rings: List[Tuple[Tuple[int, int], float, Tuple[int, int, int], bool]] = []
 
-        # Aggiorna cooldown solo per i pulsanti passati in questa chiamata
         for btn in buttons:
             bid = btn.btn_id
             if bid in self._cooldown:
@@ -72,33 +75,48 @@ class DwellController:
                     del self._cooldown[bid]
 
         for btn in buttons:
-            # Tolleranza invisibile di +14px + accetta sia punta dell'indice che centro del palmo
-            pad = 14
+            bid = btn.btn_id
+            pad = 10
             hovered_tip: Optional[Tuple[int, int]] = None
+            hovered_pinching = False
+
             for hand in hands:
-                for pt in (hand.index_tip, hand.palm_center):
+                # Punto di puntamento: punto medio tra pollice e indice (o punta indice)
+                px = (hand.index_tip[0] + hand.thumb_tip[0]) // 2
+                py = (hand.index_tip[1] + hand.thumb_tip[1]) // 2
+                for pt in (hand.index_tip, (px, py)):
                     if (btn.x1 - pad) <= pt[0] <= (btn.x2 + pad) and (btn.y1 - pad) <= pt[1] <= (btn.y2 + pad):
                         hovered_tip = pt
+                        hovered_pinching = hand.is_pinching
                         break
                 if hovered_tip is not None:
                     break
 
-            if hovered_tip is not None and btn.btn_id not in self._cooldown:
-                prev = self._progress.get(btn.btn_id, 0.0)
-                prog = min(1.0, prev + dt / max(0.15, btn.dwell_sec))
-                self._progress[btn.btn_id] = prog
-                cursor_rings.append((hovered_tip, prog, btn.color))
-                if prog >= 1.0 and triggered is None:
-                    triggered = btn.btn_id
-                    self._progress[btn.btn_id] = 0.0
-                    self._cooldown[btn.btn_id] = 0.70
-                    self.sound.play("switch")
+            if hovered_tip is not None and bid not in self._cooldown:
+                if not hovered_pinching:
+                    # Hover con dita aperte -> arma il pulsante (pronto per il pinch!)
+                    self._armed[bid] = True
+                    self._progress[bid] = max(0.0, self._progress.get(bid, 0.0) - dt * 4.0)
+                    cursor_rings.append((hovered_tip, 0.0, btn.color, False))
+                elif self._armed.get(bid, False):
+                    # Pinch intenzionale iniziato dopo l'hover!
+                    prog = min(1.0, self._progress.get(bid, 0.0) + dt / self.PINCH_HOLD_SEC)
+                    self._progress[bid] = prog
+                    cursor_rings.append((hovered_tip, prog, btn.color, True))
+                    if prog >= 1.0 and triggered is None:
+                        triggered = bid
+                        self._progress[bid] = 0.0
+                        self._armed[bid] = False
+                        self._cooldown[bid] = 0.65
+                        self.sound.play("switch")
+                else:
+                    # Pinch gia chiuso da fuori (es. drag in Stark HUD / DJ) -> ignora!
+                    self._progress[bid] = 0.0
             else:
-                # Decadimento morbido anti-tremolio della mano
-                prev = self._progress.get(btn.btn_id, 0.0)
-                self._progress[btn.btn_id] = max(0.0, prev - dt * 0.85)
+                self._armed[bid] = False
+                self._progress[bid] = max(0.0, self._progress.get(bid, 0.0) - dt * 4.0)
 
-            prog = self._progress.get(btn.btn_id, 0.0)
+            prog = self._progress.get(bid, 0.0)
             is_hover = hovered_tip is not None
             border = COLOR_YELLOW if is_hover else (btn.color if btn.active else (85, 98, 125))
             bg = (30, 42, 62) if (is_hover or btn.active) else (16, 22, 34)
@@ -146,7 +164,7 @@ class DwellController:
                     shadow=False,
                 )
 
-            # Barra di avanzamento sul bordo inferiore del pulsante
+            # Feedback visivo sul bordo inferiore durante il pinch
             if prog > 0.02:
                 bar_w = int((btn.x2 - btn.x1 - 6) * prog)
                 cv2.rectangle(
@@ -157,12 +175,16 @@ class DwellController:
                     -1,
                 )
 
-        # Disegna anelli di caricamento circolari attorno al dito (visibilissimi sul 60"!)
-        for tip, prog, col in cursor_rings:
-            cv2.circle(frame, tip, 26, (30, 35, 50), 4, cv2.LINE_AA)
-            end_ang = int(-90 + 360 * prog)
-            cv2.ellipse(frame, tip, (26, 26), 0, -90, end_ang, COLOR_YELLOW, 5, cv2.LINE_AA)
-            cv2.circle(frame, tip, 7, col, -1, cv2.LINE_AA)
+        # Cursore stile Apple Vision Pro: cerchietto in hover, anello dorato al pinch!
+        for tip, prog, col, pinching in cursor_rings:
+            if pinching:
+                cv2.circle(frame, tip, 24, (30, 35, 50), 4, cv2.LINE_AA)
+                end_ang = int(-90 + 360 * prog)
+                cv2.ellipse(frame, tip, (24, 24), 0, -90, end_ang, COLOR_YELLOW, 5, cv2.LINE_AA)
+                cv2.circle(frame, tip, 8, COLOR_YELLOW, -1, cv2.LINE_AA)
+            else:
+                cv2.circle(frame, tip, 18, col, 2, cv2.LINE_AA)
+                put_text_centered(frame, "PINCH", (tip[0], tip[1] - 28), scale=0.42, color=COLOR_YELLOW, thickness=1)
 
         return triggered
 
@@ -210,7 +232,7 @@ class HomeMenuScreen:
         )
         put_text_centered(
             frame,
-            "Punta l'INDICE su una scheda per 1 secondo  (nessuna tastiera necessaria!)",
+            "Punta su una scheda e fai PINCH (unisci pollice + indice) per aprire!",
             (cx, 142),
             scale=0.56,
             color=COLOR_CYAN,

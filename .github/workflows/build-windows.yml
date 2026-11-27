@@ -1,9 +1,13 @@
-name: Build Windows Executable
+name: Build & Release Windows Executable
 
 on:
   push:
     branches: [ main, master ]
+    tags: [ "v*" ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
@@ -35,6 +39,7 @@ jobs:
           pip install -r requirements.txt pyinstaller
 
       - name: Build Windows portable app (onedir)
+        shell: pwsh
         run: |
           pyinstaller --noconfirm --clean --onedir `
             --name "Galilei_Di_Palo_AI_Lab" `
@@ -42,7 +47,6 @@ jobs:
             --add-data "assets;assets" `
             --collect-all mediapipe `
             main.py
-        shell: pwsh
 
       - name: Add quick fullscreen launcher inside dist
         shell: pwsh
@@ -52,7 +56,7 @@ jobs:
       - name: Package ZIP artifact
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist/Galilei_Di_Palo_AI_Lab/*" -DestinationPath "Galilei_Di_Palo_AI_Lab_Windows.zip"
+          Compress-Archive -Path "dist/Galilei_Di_Palo_AI_Lab/*" -DestinationPath "Galilei_Di_Palo_AI_Lab_Windows.zip" -Force
 
       - name: Upload Windows Build Artifact
         uses: actions/upload-artifact@v4
@@ -60,3 +64,36 @@ jobs:
           name: Galilei_Di_Palo_AI_Lab_Windows
           path: Galilei_Di_Palo_AI_Lab_Windows.zip
           retention-days: 30
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME } else { "latest" }
+          $title = "IIS Galilei - Di Palo — AI Hand Lab ($tag)"
+          $notes = @"
+          ### Suite AI Interattiva per Orientamento — IIS "Galilei - Di Palo" (Salerno)
+
+          **Come avviare su Windows (zero installazione Python richiesta):**
+          1. Scarica ed estrai ``Galilei_Di_Palo_AI_Lab_Windows.zip``
+          2. Fai doppio click su **``AVVIA_SCHERMO_INTERO.bat``** (oppure ``Galilei_Di_Palo_AI_Lab.exe``)
+
+          **5 Modalità incluse (100% offline):**
+          - ``1`` **Cyber Slice** (Fruit Ninja a mani nude)
+          - ``2`` **Morra AI** (Sasso-Carta-Forbici vs AI)
+          - ``3`` **AI Music Studio** (DJ 4-Zone XY, Pianoforte Aereo con Guida Melodie, Batteria Aerea)
+          - ``4`` **Stark HUD** (Finestre olografiche stile Iron Man)
+          - ``5`` **Conta Presenti** (Appello AI della classe)
+          "@
+
+          $exists = $false
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { $exists = $true }
+
+          if ($exists) {
+            gh release upload $tag "Galilei_Di_Palo_AI_Lab_Windows.zip" --clobber
+            gh release edit $tag --title "$title" --notes "$notes" --latest
+          } else {
+            gh release create $tag "Galilei_Di_Palo_AI_Lab_Windows.zip" --title "$title" --notes "$notes" --latest
+          }

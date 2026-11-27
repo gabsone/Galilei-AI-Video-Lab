@@ -193,8 +193,10 @@ def main() -> int:
             if not ok or frame is None:
                 continue
 
-            # Effetto specchio naturale per chi e davanti al 60 pollici
+            # Effetto specchio naturale + risoluzione minima HD 1280x720 per HUD sempre nitido
             frame = cv2.flip(frame, 1)
+            if frame.shape[1] < args.width or frame.shape[0] < args.height:
+                frame = cv2.resize(frame, (args.width, args.height), interpolation=cv2.INTER_LINEAR)
             frame_h, frame_w = frame.shape[:2]
 
             now = time.perf_counter()
@@ -249,12 +251,12 @@ def main() -> int:
             draw_bottom_hints(frame, extra_hint)
             clear_unhandled_mouse_click()
 
-            # Rendering su finestra SDL2 (vero fullscreen senza barra bianca!)
+            # Rendering su finestra SDL2 con smoothscale (antialiasing nitido, zero sgranatura!)
             win_w, win_h = screen.get_size()
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             surf = pygame.image.frombuffer(frame_rgb.tobytes(), (frame_w, frame_h), "RGB")
             if (win_w, win_h) != (frame_w, frame_h):
-                surf = pygame.transform.scale(surf, (win_w, win_h))
+                surf = pygame.transform.smoothscale(surf, (win_w, win_h))
             screen.blit(surf, (0, 0))
             pygame.display.flip()
     finally:

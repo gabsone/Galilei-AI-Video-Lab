@@ -581,8 +581,9 @@ class HandSynthMode:
             seg_start = prev if prev is not None else tip
             current_pad: Optional[str] = None
             for pid, _, center, radius, col in pads:
-                if self._dist_seg_point(seg_start, tip, center) <= radius + 22:
+                if math.hypot(tip_x - center[0], tip_y - center[1]) <= radius + 22:
                     current_pad = pid
+                if self._dist_seg_point(seg_start, tip, center) <= radius + 22:
                     entered_pad = pid != self._drum_prev_pad[h_idx]
                     down_strike = vy > 135.0
                     if (h_idx, pid) not in self._drum_pad_cooldown and ((entered_pad and speed > 65.0) or down_strike):
@@ -593,7 +594,6 @@ class HandSynthMode:
                         self._drum_hits += 1
                         self._drum_waves.append(DrumWave(center[0], center[1], float(radius), radius + 95 * vel, col))
                         self._emit_sparks(center[0], center[1], col, count=int(12 + 12 * vel))
-                    break
 
             self._drum_prev_tip[h_idx] = tip
             self._drum_prev_pad[h_idx] = current_pad

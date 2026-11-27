@@ -63,16 +63,13 @@ class DwellController:
         triggered: Optional[str] = None
         cursor_rings: List[Tuple[Tuple[int, int], float, Tuple[int, int, int]]] = []
 
-        # Aggiorna cooldown
-        for bid in list(self._cooldown.keys()):
-            self._cooldown[bid] -= dt
-            if self._cooldown[bid] <= 0:
-                del self._cooldown[bid]
-
-        active_ids = {b.btn_id for b in buttons}
-        for bid in list(self._progress.keys()):
-            if bid not in active_ids:
-                del self._progress[bid]
+        # Aggiorna cooldown solo per i pulsanti passati in questa chiamata
+        for btn in buttons:
+            bid = btn.btn_id
+            if bid in self._cooldown:
+                self._cooldown[bid] -= dt
+                if self._cooldown[bid] <= 0:
+                    del self._cooldown[bid]
 
         for btn in buttons:
             # Tolleranza invisibile di +14px + accetta sia punta dell'indice che centro del palmo

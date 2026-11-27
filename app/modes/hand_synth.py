@@ -95,10 +95,10 @@ class HandSynthMode:
 
     def reset(self) -> None:
         self.tracks: List[TrackPad] = [
-            TrackPad("drums", "BATTERIA", "Kick · Snare · Hi-Hat", COLOR_CYAN, 0.72, True, 0.5),
-            TrackPad("bass", "BASSO SYNTH", "Groove 116 BPM", COLOR_MAGENTA, 0.0, False, 0.5),
-            TrackPad("piano", "ACCORDI PIANO", "Am · F · C · G", COLOR_GREEN, 0.60, True, 0.5),
-            TrackPad("arp", "SYNTH LEAD", "Arpeggio Elettronico", COLOR_ORANGE, 0.0, False, 0.5),
+            TrackPad("drums", "BATTERIA", "Beat Elettronico", COLOR_CYAN, 0.72, True, 0.5),
+            TrackPad("bass", "BASSO SYNTH", "Groove & Sub", COLOR_MAGENTA, 0.55, True, 0.5),
+            TrackPad("piano", "ACCORDI", "Armonia & Pad", COLOR_GREEN, 0.0, False, 0.5),
+            TrackPad("arp", "MELODIA HIT", "Tema Principale!", COLOR_ORANGE, 0.75, True, 0.5),
         ]
         # Stato Studio DJ
         self._grabbed_track: Dict[int, Optional[int]] = {0: None, 1: None}
@@ -163,6 +163,9 @@ class HandSynthMode:
     def handle_key(self, key: int) -> None:
         if key in (ord("p"), ord("P")):
             self.cycle_submode()
+        elif key in (ord("t"), ord("T")) and self.submode == "studio":
+            self.sound.next_dj_pack()
+            self.sound.play("switch")
         elif key in (ord("g"), ord("G")) and self.submode == "piano":
             self.song_idx = (self.song_idx + 1) % len(GUIDED_SONGS)
             self._song_step = 0
@@ -202,9 +205,25 @@ class HandSynthMode:
         h, w = frame.shape[:2]
         self._start_loops()
 
-        margin_x, top_y, bot_y, gap = 24, 126, h - 54, 18
+        margin_x, top_y, bot_y, gap = 24, 174, h - 54, 18
         mid_x = w // 2
         mid_y = (top_y + bot_y) // 2
+
+        # Pulsante touch-free per cambiare traccia famosa (TETRIS CYBER / STRANGER 80s / CRAZY ELECTRO)
+        pack_btn = DwellButton(
+            btn_id="next_dj_pack",
+            x1=w // 2 - 245,
+            y1=122,
+            x2=w // 2 + 245,
+            y2=166,
+            label=f"TRACCIA: {self.sound.current_pack_name}  ({int(self.sound.current_pack_bpm)} BPM)  >",
+            color=COLOR_YELLOW,
+            dwell_sec=0.48,
+            active=True,
+            label_scale=0.56,
+        )
+        if self.dwell.update_and_draw(frame, [pack_btn], hands, dt) == "next_dj_pack":
+            self.sound.next_dj_pack()
 
         rects = [
             (margin_x, top_y, mid_x - gap // 2, mid_y - gap // 2),
@@ -258,7 +277,7 @@ class HandSynthMode:
 
             self._last_pinch_state[h_idx] = hand.is_pinching
 
-        beat_phase = ((time.perf_counter() - self._beat_start) * (self.sound.STUDIO_BPM / 60.0)) % 1.0
+        beat_phase = ((time.perf_counter() - self._beat_start) * (self.sound.current_pack_bpm / 60.0)) % 1.0
         pulse = math.exp(-beat_phase * 5.0)
 
         for idx, (pad, (x1, y1, x2, y2)) in enumerate(zip(self.tracks, rects)):

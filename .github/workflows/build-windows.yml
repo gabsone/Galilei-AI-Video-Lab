@@ -1,0 +1,62 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Ensure offline MediaPipe models exist
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path models | Out-Null
+          if (-not (Test-Path "models/hand_landmarker.task")) {
+            Invoke-WebRequest -Uri "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" -OutFile "models/hand_landmarker.task"
+          }
+          if (-not (Test-Path "models/efficientdet_lite2.tflite")) {
+            Invoke-WebRequest -Uri "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/int8/1/efficientdet_lite2.tflite" -OutFile "models/efficientdet_lite2.tflite"
+          }
+
+      - name: Install dependencies and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build Windows portable app (onedir)
+        run: |
+          pyinstaller --noconfirm --clean --onedir `
+            --name "Galilei_Di_Palo_AI_Lab" `
+            --add-data "models;models" `
+            --add-data "assets;assets" `
+            --collect-all mediapipe `
+            main.py
+        shell: pwsh
+
+      - name: Add quick fullscreen launcher inside dist
+        shell: pwsh
+        run: |
+          "@echo off`r`ncd /d `"%~dp0`"`r`nGalilei_Di_Palo_AI_Lab.exe --fullscreen`r`n" | Out-File -Encoding ascii "dist/Galilei_Di_Palo_AI_Lab/AVVIA_SCHERMO_INTERO.bat"
+
+      - name: Package ZIP artifact
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/Galilei_Di_Palo_AI_Lab/*" -DestinationPath "Galilei_Di_Palo_AI_Lab_Windows.zip"
+
+      - name: Upload Windows Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Galilei_Di_Palo_AI_Lab_Windows
+          path: Galilei_Di_Palo_AI_Lab_Windows.zip
+          retention-days: 30

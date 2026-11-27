@@ -240,6 +240,7 @@ class HomeMenuScreen:
         (9, "AIR GRAFFITI", "Lavagna Neon in aria", COLOR_MAGENTA),
         (10, "CACCIA OGGETTI", "Trova oggetti in 12s!", COLOR_GREEN),
         (11, "NEON DRIVE 3D", "Guida 3D col Volante!", COLOR_YELLOW),
+        (12, "LABIRINTO 3D", "Esplora in 3D Raycasting!", COLOR_MAGENTA),
     ]
 
     def __init__(self, sound: SoundEngine) -> None:

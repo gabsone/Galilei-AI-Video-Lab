@@ -82,8 +82,8 @@ jobs:
           1. Scarica ed estrai ``Galilei_Di_Palo_AI_Lab_Windows.zip``
           2. Fai doppio click su **``AVVIA_SCHERMO_INTERO.bat``** (oppure ``Galilei_Di_Palo_AI_Lab.exe``)
 
-          **10 Modalità incluse (100% offline, navigazione stile Apple Vision Pro senza tastiera):**
-          - **Menu Home Olografico 5×2** (punta e fai PINCH per aprire!)
+          **12 Modalità incluse (100% offline, navigazione stile Apple Vision Pro + Mouse):**
+          - **Menu Home Olografico 4×3** (punta e fai PINCH oppure clicca col mouse!)
           - ``1`` **Cyber Slice** (Fruit Ninja a mani nude)
           - ``2`` **Morra AI** (Sasso-Carta-Forbici in loop automatico)
           - ``3`` **AI Music Studio** (DJ 4-Zone con 3 hit famose · Pianoforte Neon · Batteria Aerea)
@@ -95,6 +95,7 @@ jobs:
           - ``9`` **Air Graffiti** (Lavagna neon in aria a 2 mani + gomma + salva)
           - ``10`` **Caccia agli Oggetti** (Sfida a tempo in classe su bottiglie, zaini, cellulari, libri...)
           - ``11`` **Neon Drive 3D** (Corsa auto 3D Synthwave guidata col volante a 2 mani!)
+          - ``12`` **Labirinto 3D** (Esplorazione 3D Raycasting controllata con la mano!)
           "@
 
           $exists = $false

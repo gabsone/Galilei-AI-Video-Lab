@@ -40,6 +40,25 @@ class DwellButton:
     label_scale: float = 0.62
 
 
+# Stato globale del mouse (aggiornato da cv2.setMouseCallback in main.py)
+_MOUSE_POS: Optional[Tuple[int, int]] = None
+_MOUSE_CLICK_POS: Optional[Tuple[int, int]] = None
+
+
+def on_mouse_event(event: int, x: int, y: int, flags: int, param: object) -> None:
+    """Callback OpenCV per supportare hover e click sinistro su tutti i pulsanti."""
+    global _MOUSE_POS, _MOUSE_CLICK_POS
+    _MOUSE_POS = (x, y)
+    if event == cv2.EVENT_LBUTTONDOWN:
+        _MOUSE_CLICK_POS = (x, y)
+
+
+def clear_unhandled_mouse_click() -> None:
+    """Azzera eventuali click a vuoto a fine frame."""
+    global _MOUSE_CLICK_POS
+    _MOUSE_CLICK_POS = None
+
+
 class DwellController:
     """Gestisce i pulsanti touch-free stile Apple Vision Pro: Punta (hover) + PINCH per cliccare."""
 
@@ -74,14 +93,34 @@ class DwellController:
                 if self._cooldown[bid] <= 0:
                     del self._cooldown[bid]
 
+        global _MOUSE_CLICK_POS
         for btn in buttons:
             bid = btn.btn_id
             pad = 10
             hovered_tip: Optional[Tuple[int, int]] = None
             hovered_pinching = False
 
+            # 1. Controllo click immediato con il mouse (priorita assoluta!)
+            mouse_hover = (
+                _MOUSE_POS is not None
+                and btn.x1 <= _MOUSE_POS[0] <= btn.x2
+                and btn.y1 <= _MOUSE_POS[1] <= btn.y2
+            )
+            if (
+                _MOUSE_CLICK_POS is not None
+                and triggered is None
+                and btn.x1 <= _MOUSE_CLICK_POS[0] <= btn.x2
+                and btn.y1 <= _MOUSE_CLICK_POS[1] <= btn.y2
+            ):
+                triggered = bid
+                _MOUSE_CLICK_POS = None
+                self._progress[bid] = 0.0
+                self._armed[bid] = False
+                self._cooldown[bid] = 0.25
+                self.sound.play("switch")
+
+            # 2. Controllo mano (Punta + PINCH stile Apple Vision Pro)
             for hand in hands:
-                # Punto di puntamento: punto medio tra pollice e indice (o punta indice)
                 px = (hand.index_tip[0] + hand.thumb_tip[0]) // 2
                 py = (hand.index_tip[1] + hand.thumb_tip[1]) // 2
                 for pt in (hand.index_tip, (px, py)):
@@ -94,12 +133,10 @@ class DwellController:
 
             if hovered_tip is not None and bid not in self._cooldown:
                 if not hovered_pinching:
-                    # Hover con dita aperte -> arma il pulsante (pronto per il pinch!)
                     self._armed[bid] = True
                     self._progress[bid] = max(0.0, self._progress.get(bid, 0.0) - dt * 4.0)
                     cursor_rings.append((hovered_tip, 0.0, btn.color, False))
                 elif self._armed.get(bid, False):
-                    # Pinch intenzionale iniziato dopo l'hover!
                     prog = min(1.0, self._progress.get(bid, 0.0) + dt / self.PINCH_HOLD_SEC)
                     self._progress[bid] = prog
                     cursor_rings.append((hovered_tip, prog, btn.color, True))
@@ -110,14 +147,13 @@ class DwellController:
                         self._cooldown[bid] = 0.65
                         self.sound.play("switch")
                 else:
-                    # Pinch gia chiuso da fuori (es. drag in Stark HUD / DJ) -> ignora!
                     self._progress[bid] = 0.0
             else:
                 self._armed[bid] = False
                 self._progress[bid] = max(0.0, self._progress.get(bid, 0.0) - dt * 4.0)
 
             prog = self._progress.get(bid, 0.0)
-            is_hover = hovered_tip is not None
+            is_hover = (hovered_tip is not None) or mouse_hover
             border = COLOR_YELLOW if is_hover else (btn.color if btn.active else (85, 98, 125))
             bg = (30, 42, 62) if (is_hover or btn.active) else (16, 22, 34)
 

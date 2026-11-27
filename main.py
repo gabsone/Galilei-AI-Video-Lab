@@ -14,7 +14,13 @@ from pathlib import Path
 
 import cv2
 
-from app.dwell_ui import DwellButton, DwellController, HomeMenuScreen
+from app.dwell_ui import (
+    DwellButton,
+    DwellController,
+    HomeMenuScreen,
+    clear_unhandled_mouse_click,
+    on_mouse_event,
+)
 from app.hand_tracker import HandTracker
 from app.hud import draw_bottom_hints, draw_top_bar, draw_xray_panel, get_top_bar_buttons
 from app.modes.air_graffiti import AirGraffitiMode
@@ -116,6 +122,7 @@ def main() -> int:
     # WINDOW_FREERATIO + WINDOW_GUI_NORMAL eliminano la banda bianca superiore in fullscreen!
     win_flags = cv2.WINDOW_NORMAL | cv2.WINDOW_FREERATIO | cv2.WINDOW_GUI_NORMAL
     cv2.namedWindow(WINDOW_NAME, win_flags)
+    cv2.setMouseCallback(WINDOW_NAME, on_mouse_event)
     cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_ASPECT_RATIO, cv2.WINDOW_FREERATIO)
     if is_fullscreen:
         cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -185,6 +192,7 @@ def main() -> int:
                     debug_mode = not debug_mode
 
             draw_bottom_hints(frame, extra_hint)
+            clear_unhandled_mouse_click()
 
             cv2.imshow(WINDOW_NAME, frame)
 

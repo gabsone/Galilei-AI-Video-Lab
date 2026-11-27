@@ -14,6 +14,7 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 import numpy as np
 
+from app.dwell_ui import DwellButton, DwellController
 from app.hand_tracker import HandData
 from app.hud import (
     COLOR_CYAN,
@@ -58,6 +59,7 @@ class AttendanceCounterMode:
             )
 
         self.threshold = 0.32
+        self.dwell = DwellController(sound)
         self._detector = self._create_detector()
         self._last_timestamp_ms = 0
         self._start_time = time.perf_counter()
@@ -245,7 +247,52 @@ class AttendanceCounterMode:
             cv2.LINE_AA,
         )
 
-        # Banner celebrativo quando l'appello viene bloccato con SPAZIO
+        # Pulsanti touch-free sotto il pannello contatore (SCATTA APPELLO, -, +)
+        ctrl_buttons = [
+            DwellButton(
+                btn_id="freeze",
+                x1=px1,
+                y1=py2 + 10,
+                x2=px2,
+                y2=py2 + 56,
+                label="RIPRENDI LIVE" if self.frozen else "SCATTA APPELLO",
+                color=COLOR_YELLOW if self.frozen else COLOR_GREEN,
+                dwell_sec=0.60,
+                active=True,
+                label_scale=0.58,
+            ),
+            DwellButton(
+                btn_id="sens_down",
+                x1=px1,
+                y1=py2 + 64,
+                x2=(px1 + px2) // 2 - 5,
+                y2=py2 + 108,
+                label="- SOGLIA",
+                color=COLOR_CYAN,
+                dwell_sec=0.55,
+                label_scale=0.52,
+            ),
+            DwellButton(
+                btn_id="sens_up",
+                x1=(px1 + px2) // 2 + 5,
+                y1=py2 + 64,
+                x2=px2,
+                y2=py2 + 108,
+                label="+ SOGLIA",
+                color=COLOR_CYAN,
+                dwell_sec=0.55,
+                label_scale=0.52,
+            ),
+        ]
+        hit_ctrl = self.dwell.update_and_draw(frame, ctrl_buttons, hands, dt)
+        if hit_ctrl == "freeze":
+            self.handle_key(ord(" "))
+        elif hit_ctrl == "sens_down":
+            self.handle_key(ord("-"))
+        elif hit_ctrl == "sens_up":
+            self.handle_key(ord("+"))
+
+        # Banner celebrativo quando l'appello viene bloccato
         if self.frozen:
             cx = w // 2
             draw_panel(frame, cx - 265, h - 125, cx + 265, h - 52, border_color=COLOR_GREEN, alpha=0.88, thickness=3)
@@ -259,7 +306,7 @@ class AttendanceCounterMode:
             )
             put_text_centered(
                 frame,
-                "Premi [SPAZIO] per riprendere la scansione live",
+                "Punta su RIPRENDI LIVE a destra per continuare",
                 (cx, h - 68),
                 scale=0.48,
                 color=COLOR_WHITE,
@@ -267,7 +314,7 @@ class AttendanceCounterMode:
                 shadow=False,
             )
 
-        return "[SPAZIO] Blocca/Riprendi Appello  |  [+]/[-] Sensibilita AI  |  [R] Azzera Picco"
+        return "Inquadra la classe! Punta l'indice su SCATTA APPELLO o +/- SOGLIA a destra"
 
     def close(self) -> None:
         self._detector.close()

@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
+from app.dwell_ui import DwellButton, DwellController
 from app.hand_tracker import HandData
 from app.hud import (
     COLOR_CYAN,
@@ -83,6 +84,7 @@ class HandSynthMode:
 
     def __init__(self, sound: SoundEngine) -> None:
         self.sound = sound
+        self.dwell = DwellController(sound)
         self.submode = "studio"
         self.song_idx = 1  # Parte con guida "Inno alla Gioia" pronta sul piano
         self.reset()
@@ -419,23 +421,32 @@ class HandSynthMode:
             self._piano_prev_pinch[h_idx] = hand.is_pinching
             self._piano_prev_key[h_idx] = hit_key
 
-        # Banner guida melodia sopra la tastiera
+        # Banner guida melodia sopra la tastiera (cliccabile col dito per cambiare canzone!)
         cx = w // 2
-        draw_panel(frame, cx - 260, 128, cx + 260, 182, border_color=COLOR_YELLOW if song_notes else COLOR_CYAN, alpha=0.78)
         if self._song_complete_flash > 0:
+            draw_panel(frame, cx - 260, 128, cx + 260, 182, border_color=COLOR_GREEN, alpha=0.84)
             put_text_centered(frame, "MELODIA COMPLETATA! BRAVISSIMO!", (cx, 155), scale=0.72, color=COLOR_GREEN, thickness=2)
-        elif song_notes:
-            put_text_centered(
-                frame,
-                f"GUIDA [G]: {song_name}  ({self._song_step + 1}/{len(song_notes)}) -> {ITALIAN_NOTE_NAMES[target_note]}",
-                (cx, 155),
-                scale=0.58,
-                color=COLOR_YELLOW,
-                thickness=2,
-                shadow=False,
-            )
         else:
-            put_text_centered(frame, "PIANO LIBERO  |  Premi [G] per la Guida Melodie!", (cx, 155), scale=0.58, color=COLOR_CYAN, thickness=1, shadow=False)
+            song_label = (
+                f"MELODIA: {song_name} ({self._song_step + 1}/{len(song_notes)}) -> {ITALIAN_NOTE_NAMES[target_note]}"
+                if song_notes
+                else "PIANO LIBERO  |  Punta qui per Guida Melodie"
+            )
+            guide_btn = DwellButton(
+                btn_id="next_song",
+                x1=cx - 285,
+                y1=126,
+                x2=cx + 285,
+                y2=180,
+                label=song_label,
+                color=COLOR_YELLOW if song_notes else COLOR_CYAN,
+                dwell_sec=0.60,
+                active=bool(song_notes),
+                label_scale=0.54,
+            )
+            if self.dwell.update_and_draw(frame, [guide_btn], hands, dt) == "next_song":
+                self.song_idx = (self.song_idx + 1) % len(GUIDED_SONGS)
+                self._song_step = 0
 
         # Disegna tasti bianchi
         for note_idx, (x1, y1, x2, y2) in white_rects.items():
@@ -606,47 +617,47 @@ class HandSynthMode:
         w = frame.shape[1]
         self._toggle_cooldown = max(0.0, self._toggle_cooldown - dt)
 
-        # Barra 3 sotto-modalità in alto al centro (selezionabili con [P] o con pinch)
+        # Barra 3 sotto-modalità in alto al centro (100% touch-free: basta puntare l'indice!)
         sub_tabs = [
             ("studio", "DJ 4-ZONE", COLOR_GREEN),
             ("piano", "PIANOFORTE", COLOR_MAGENTA),
             ("drums", "BATTERIA", COLOR_ORANGE),
         ]
-        tw, gap = 165, 10
+        tw, gap = 175, 12
         total_w = len(sub_tabs) * tw + (len(sub_tabs) - 1) * gap
         sx = (w - total_w) // 2
 
-        for i, (sid, label, col) in enumerate(sub_tabs):
-            x1 = sx + i * (tw + gap)
-            x2 = x1 + tw
-            y1, y2 = 72, 112
-            active = sid == self.submode
-            draw_panel(
-                frame, x1, y1, x2, y2,
-                bg_color=(30, 38, 56) if active else (16, 20, 30),
-                border_color=col if active else (70, 80, 100),
-                alpha=0.86 if active else 0.55,
-                thickness=2 if active else 1,
+        tab_buttons = [
+            DwellButton(
+                btn_id=sid,
+                x1=sx + i * (tw + gap),
+                y1=72,
+                x2=sx + i * (tw + gap) + tw,
+                y2=114,
+                label=label,
+                color=col,
+                dwell_sec=0.55,
+                active=(sid == self.submode),
+                label_scale=0.54,
             )
-            put_text_centered(frame, label, ((x1 + x2) // 2, (y1 + y2) // 2), scale=0.52, color=col if active else COLOR_MUTED, thickness=2 if active else 1, shadow=False)
-
-            if self._toggle_cooldown <= 0.0 and not active:
-                for hand in hands:
-                    ix, iy = hand.index_tip
-                    if x1 <= ix <= x2 and y1 <= iy <= y2 and hand.is_pinching:
-                        self.set_submode(sid)
-                        self._toggle_cooldown = 0.7
-                        break
+            for i, (sid, label, col) in enumerate(sub_tabs)
+        ]
 
         if self.submode == "studio":
             self._update_and_draw_studio(frame, hands, dt, debug_mode)
             self._draw_sparks(frame, dt)
-            return "PINCH: Su/Giu = Volume  |  Sx/Dx = DEEP <-> HYPER  |  [P] Cambia strumento"
+            hint = "PINCH nei riquadri: Su/Giu = Volume, Sx/Dx = DEEP <-> HYPER  |  Punta in alto per cambiare strumento"
         elif self.submode == "piano":
             self._update_and_draw_piano(frame, hands, dt, debug_mode)
             self._draw_sparks(frame, dt)
-            return "Colpetto giu o PINCH sui tasti per suonare  |  [G] Guida Melodie  |  [P] Batteria"
+            hint = "Colpetto giu o PINCH sui tasti per suonare  |  Punta in alto per cambiare melodia o strumento"
         else:
             self._update_and_draw_drums(frame, hands, dt, debug_mode)
             self._draw_sparks(frame, dt)
-            return "AIR DRUMS: colpisci VERSO IL BASSO sui pad con le bacchette!  |  [P] DJ Studio"
+            hint = "AIR DRUMS: colpisci VERSO IL BASSO sui pad con le bacchette!  |  Punta in alto per cambiare strumento"
+
+        hit_tab = self.dwell.update_and_draw(frame, tab_buttons, hands, dt)
+        if hit_tab in self.SUBMODES:
+            self.set_submode(hit_tab)
+
+        return hint

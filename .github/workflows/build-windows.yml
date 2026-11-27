@@ -32,6 +32,9 @@ jobs:
           if (-not (Test-Path "models/efficientdet_lite2.tflite")) {
             Invoke-WebRequest -Uri "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/int8/1/efficientdet_lite2.tflite" -OutFile "models/efficientdet_lite2.tflite"
           }
+          if (-not (Test-Path "models/face_landmarker.task")) {
+            Invoke-WebRequest -Uri "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" -OutFile "models/face_landmarker.task"
+          }
 
       - name: Install dependencies and PyInstaller
         run: |
@@ -79,12 +82,14 @@ jobs:
           1. Scarica ed estrai ``Galilei_Di_Palo_AI_Lab_Windows.zip``
           2. Fai doppio click su **``AVVIA_SCHERMO_INTERO.bat``** (oppure ``Galilei_Di_Palo_AI_Lab.exe``)
 
-          **5 Modalità incluse (100% offline):**
+          **6 Modalità incluse (100% offline e navigabili senza tastiera su schermi 60"+):**
+          - **Menu Home Olografico** (punta l'indice su una scheda per iniziare!)
           - ``1`` **Cyber Slice** (Fruit Ninja a mani nude)
           - ``2`` **Morra AI** (Sasso-Carta-Forbici vs AI)
           - ``3`` **AI Music Studio** (DJ 4-Zone XY, Pianoforte Aereo con Guida Melodie, Batteria Aerea)
           - ``4`` **Stark HUD** (Finestre olografiche stile Iron Man)
           - ``5`` **Conta Presenti** (Appello AI della classe)
+          - ``6`` **Face Emoji AI** (Emoji / Robot / Alieno animati sulle espressioni fino a 4 volti!)
           "@
 
           $exists = $false

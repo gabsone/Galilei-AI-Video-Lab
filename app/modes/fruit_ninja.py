@@ -12,6 +12,7 @@ from typing import Deque, List, Tuple
 import cv2
 import numpy as np
 
+from app.dwell_ui import DwellButton, DwellController
 from app.hand_tracker import HandData
 from app.hud import (
     COLOR_CYAN,
@@ -79,6 +80,7 @@ class FruitNinjaMode:
 
     def __init__(self, sound: SoundEngine) -> None:
         self.sound = sound
+        self.dwell = DwellController(sound)
         self.best_score = 0
         self.reset()
 
@@ -308,12 +310,26 @@ class FruitNinjaMode:
         cv2.putText(frame, f"TEMPO : {int(math.ceil(self.time_left)):02d}s", (w - 248, 140), cv2.FONT_HERSHEY_DUPLEX, 0.72, COLOR_YELLOW if self.time_left <= 10 else COLOR_WHITE, 2, cv2.LINE_AA)
         cv2.putText(frame, f"RECORD: {self.best_score}", (w - 248, 166), cv2.FONT_HERSHEY_SIMPLEX, 0.56, COLOR_CYAN, 1, cv2.LINE_AA)
 
-        # Schermata di fine round
+        # Schermata di fine round con pulsante touch-free RIGIOCA!
         if self.game_over:
             cx, cy = w // 2, h // 2
-            draw_panel(frame, cx - 270, cy - 115, cx + 270, cy + 115, border_color=COLOR_YELLOW, alpha=0.88, thickness=3)
-            put_text_centered(frame, "TEMPO SCADUTO!", (cx, cy - 60), scale=1.15, color=COLOR_YELLOW, thickness=3)
-            put_text_centered(frame, f"PUNTEGGIO FINALE: {self.score}", (cx, cy + 2), scale=0.95, color=COLOR_WHITE, thickness=2)
-            put_text_centered(frame, "Premi [SPAZIO] o [R] per un nuovo round", (cx, cy + 62), scale=0.62, color=COLOR_GREEN, thickness=1)
+            draw_panel(frame, cx - 280, cy - 135, cx + 280, cy + 135, border_color=COLOR_YELLOW, alpha=0.88, thickness=3)
+            put_text_centered(frame, "TEMPO SCADUTO!", (cx, cy - 82), scale=1.15, color=COLOR_YELLOW, thickness=3)
+            put_text_centered(frame, f"PUNTEGGIO FINALE: {self.score}", (cx, cy - 22), scale=0.95, color=COLOR_WHITE, thickness=2)
+            replay_btn = DwellButton(
+                btn_id="replay",
+                x1=cx - 155,
+                y1=cy + 30,
+                x2=cx + 155,
+                y2=cy + 102,
+                label="RIGIOCA!",
+                color=COLOR_GREEN,
+                dwell_sec=0.60,
+                active=True,
+                label_scale=0.85,
+            )
+            if self.dwell.update_and_draw(frame, [replay_btn], hands, dt) == "replay":
+                self.reset()
+                self.sound.play("go")
 
         return "Muovi l'INDICE per tagliare le sfere tech ed evitare i BUG rossi!"

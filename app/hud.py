@@ -133,6 +133,32 @@ def draw_hand_skeleton(
             )
 
 
+MODE_TITLES = {
+    0: ("MENU PRINCIPALE", COLOR_CYAN),
+    1: ("CYBER SLICE", COLOR_GREEN),
+    2: ("MORRA AI", COLOR_MAGENTA),
+    3: ("AI MUSIC STUDIO", COLOR_CYAN),
+    4: ("STARK HUD", COLOR_ORANGE),
+    5: ("CONTA PRESENTI", COLOR_YELLOW),
+    6: ("FACE EMOJI AI", (120, 220, 255)),
+}
+
+
+def get_top_bar_buttons(w: int, active_mode: int, debug_mode: bool) -> List[Tuple[str, int, int, int, int, str, Tuple[int, int, int], bool]]:
+    """Restituisce i pulsanti touch-free della barra superiore (attivi quando active_mode != 0)."""
+    if active_mode == 0:
+        return []
+    # 3 pulsanti grandi e comodi da centrare su un 60 pollici!
+    btn_h = 46
+    y1, y2 = 10, 10 + btn_h
+    buttons = [
+        ("nav_menu", w - 425, y1, w - 295, y2, "MENU", COLOR_CYAN, True),
+        ("nav_reset", w - 285, y1, w - 155, y2, "RESET", COLOR_GREEN, False),
+        ("nav_xray", w - 145, y1, w - 16, y2, "X-RAY", COLOR_YELLOW, debug_mode),
+    ]
+    return buttons
+
+
 def draw_top_bar(
     frame: np.ndarray,
     active_mode: int,
@@ -140,25 +166,25 @@ def draw_top_bar(
     muted: bool,
     debug_mode: bool,
 ) -> None:
-    """Barra superiore con selezione modalità [1] [2] [3] e stato sistema."""
+    """Barra superiore brandizzata IIS Galilei - Di Palo per schermi grandi."""
     h, w = frame.shape[:2]
-    draw_panel(frame, 0, 0, w, 62, bg_color=(14, 16, 26), border_color=(60, 75, 110), alpha=0.78, thickness=1)
+    draw_panel(frame, 0, 0, w, 66, bg_color=(14, 16, 26), border_color=(60, 75, 110), alpha=0.80, thickness=1)
 
     # Logo ufficiale + brand IIS Galilei - Di Palo a sinistra
     logo = _get_school_logo()
     text_x = 18
     if logo is not None:
-        cv2.circle(frame, (34, 31), 24, (245, 248, 255), -1, cv2.LINE_AA)
-        cv2.circle(frame, (34, 31), 24, COLOR_CYAN, 2, cv2.LINE_AA)
-        _overlay_bgra(frame, logo, 12, 9)
+        cv2.circle(frame, (34, 33), 24, (245, 248, 255), -1, cv2.LINE_AA)
+        cv2.circle(frame, (34, 33), 24, COLOR_CYAN, 2, cv2.LINE_AA)
+        _overlay_bgra(frame, logo, 12, 11)
         text_x = 66
 
     cv2.putText(
         frame,
         "GALILEI - DI PALO",
-        (text_x, 29),
+        (text_x, 30),
         cv2.FONT_HERSHEY_DUPLEX,
-        0.60,
+        0.62,
         COLOR_WHITE,
         2,
         cv2.LINE_AA,
@@ -166,96 +192,62 @@ def draw_top_bar(
     cv2.putText(
         frame,
         "INFORMATICA · SALERNO",
-        (text_x, 49),
+        (text_x, 51),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.38,
+        0.39,
         COLOR_CYAN,
         1,
         cv2.LINE_AA,
     )
 
-    # Tab delle 5 modalità al centro
-    tabs = [
-        (1, "1: SLICE", COLOR_GREEN),
-        (2, "2: MORRA", COLOR_MAGENTA),
-        (3, "3: MUSIC", COLOR_CYAN),
-        (4, "4: STARK", COLOR_ORANGE),
-        (5, "5: PRESENTI", COLOR_YELLOW),
-    ]
-    tab_w = 136
-    gap = 8
-    total_w = len(tabs) * tab_w + (len(tabs) - 1) * gap
-    start_x = max(272, (w - total_w) // 2)
+    # Badge della modalita attiva al centro
+    title, accent = MODE_TITLES.get(active_mode, ("AI HAND LAB", COLOR_CYAN))
+    cx = w // 2 - (70 if active_mode != 0 else 0)
+    draw_panel(frame, cx - 150, 10, cx + 150, 56, bg_color=(24, 32, 48), border_color=accent, alpha=0.85, thickness=2)
+    put_text_centered(frame, title, (cx, 33), scale=0.68, color=accent, thickness=2, shadow=False)
 
-    for i, (mode_id, label, color) in enumerate(tabs):
-        tx1 = start_x + i * (tab_w + gap)
-        tx2 = tx1 + tab_w
-        is_active = mode_id == active_mode
-        draw_panel(
+    # Nel Menu Home mostra FPS e stato audio a destra
+    if active_mode == 0:
+        status_parts = [f"{int(fps)} FPS"]
+        if muted:
+            status_parts.append("MUTE")
+        status_text = " | ".join(status_parts)
+        (tw, _), _ = cv2.getTextSize(status_text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+        cv2.putText(
             frame,
-            tx1,
-            10,
-            tx2,
-            52,
-            bg_color=(32, 42, 62) if is_active else (18, 22, 34),
-            border_color=color if is_active else (70, 80, 100),
-            alpha=0.88 if is_active else 0.55,
-            thickness=2 if is_active else 1,
+            status_text,
+            (w - tw - 18, 39),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            COLOR_MUTED,
+            2,
+            cv2.LINE_AA,
         )
-        put_text_centered(
-            frame,
-            label,
-            ((tx1 + tx2) // 2, 31),
-            scale=0.55,
-            color=color if is_active else COLOR_MUTED,
-            thickness=2 if is_active else 1,
-            shadow=False,
-        )
-
-    # Info FPS / Audio / Debug a destra
-    status_parts = [f"{int(fps)} FPS"]
-    if debug_mode:
-        status_parts.append("X-RAY")
-    if muted:
-        status_parts.append("MUTE")
-    status_text = " | ".join(status_parts)
-    (tw, _), _ = cv2.getTextSize(status_text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
-    cv2.putText(
-        frame,
-        status_text,
-        (w - tw - 18, 37),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.55,
-        COLOR_YELLOW if debug_mode else COLOR_MUTED,
-        2,
-        cv2.LINE_AA,
-    )
 
 
 def draw_bottom_hints(frame: np.ndarray, extra_hint: str = "") -> None:
-    """Barra inferiore compatta con i comandi da tastiera per il docente."""
+    """Barra inferiore pulita con guida gestuale + sito istituto."""
     h, w = frame.shape[:2]
-    draw_panel(frame, 0, h - 38, w, h, bg_color=(12, 14, 22), border_color=(45, 55, 80), alpha=0.72, thickness=1)
-    base = "[1-5] Modalita  |  [D] Sotto il cofano  |  [R] Reset  |  [F] Fullscreen  |  [M] Audio  |  [Q] Esci"
-    text = f"{extra_hint}    ||    {base}" if extra_hint else base
+    draw_panel(frame, 0, h - 38, w, h, bg_color=(12, 14, 22), border_color=(45, 55, 80), alpha=0.76, thickness=1)
+    text = extra_hint if extra_hint else "Punta l'INDICE sui pulsanti in alto per tornare al MENU o resettare"
     cv2.putText(
         frame,
         text,
         (16, h - 13),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.46,
-        COLOR_MUTED,
+        0.50,
+        COLOR_WHITE,
         1,
         cv2.LINE_AA,
     )
     site = "galileidipalo.edu.it"
-    (sw, _), _ = cv2.getTextSize(site, cv2.FONT_HERSHEY_SIMPLEX, 0.46, 1)
+    (sw, _), _ = cv2.getTextSize(site, cv2.FONT_HERSHEY_SIMPLEX, 0.48, 1)
     cv2.putText(
         frame,
         site,
         (w - sw - 16, h - 13),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.46,
+        0.48,
         COLOR_CYAN,
         1,
         cv2.LINE_AA,

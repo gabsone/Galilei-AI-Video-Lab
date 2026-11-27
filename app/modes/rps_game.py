@@ -9,6 +9,7 @@ from typing import List, Optional, Tuple
 import cv2
 import numpy as np
 
+from app.dwell_ui import DwellButton, DwellController
 from app.hand_tracker import HandData
 from app.hud import (
     COLOR_CYAN,
@@ -41,6 +42,7 @@ class RPSGameMode:
 
     def __init__(self, sound: SoundEngine) -> None:
         self.sound = sound
+        self.dwell = DwellController(sound)
         self.unbeatable_mode = False  # Tasto [C]: sorpresa per far ridere la classe!
         self.reset()
 
@@ -240,12 +242,38 @@ class RPSGameMode:
             cv2.rectangle(frame, (bx1, by), (bx2, by + 10), (45, 55, 70), -1)
             cv2.rectangle(frame, (bx1, by), (int(bx1 + (bx2 - bx1) * pct), by + 10), COLOR_GREEN, -1)
         elif self.state == "RESULT":
-            draw_panel(frame, cx - 215, cy + 95, cx + 215, cy + 195, border_color=self.outcome_color, alpha=0.86, thickness=3)
-            put_text_centered(frame, self.outcome_text, (cx, cy + 132), scale=1.05, color=self.outcome_color, thickness=3)
-            put_text_centered(frame, "Premi [SPAZIO] o fai POLLICE SU", (cx, cy + 174), scale=0.55, color=COLOR_WHITE, thickness=1)
+            draw_panel(frame, cx - 215, cy + 35, cx + 215, cy + 115, border_color=self.outcome_color, alpha=0.86, thickness=3)
+            put_text_centered(frame, self.outcome_text, (cx, cy + 75), scale=1.05, color=self.outcome_color, thickness=3)
+            play_btn = DwellButton(
+                btn_id="play_rps",
+                x1=cx - 175,
+                y1=h - 122,
+                x2=cx + 175,
+                y2=h - 54,
+                label="GIOCA ANCORA!",
+                color=COLOR_GREEN,
+                dwell_sec=0.58,
+                active=True,
+                label_scale=0.72,
+            )
+            if self.dwell.update_and_draw(frame, [play_btn], hands, dt) == "play_rps":
+                self.start_round()
         else:
-            draw_panel(frame, cx - 235, h - 130, cx + 235, h - 55, border_color=COLOR_GREEN, alpha=0.78)
-            put_text_centered(frame, "Premi [SPAZIO] o fai POLLICE SU per giocare!", (cx, h - 92), scale=0.62, color=COLOR_GREEN, thickness=2)
+            play_btn = DwellButton(
+                btn_id="play_rps",
+                x1=cx - 190,
+                y1=h - 126,
+                x2=cx + 190,
+                y2=h - 54,
+                label="INIZIA SFIDA!",
+                subtitle="Punta qui o fai POLLICE SU",
+                color=COLOR_GREEN,
+                dwell_sec=0.58,
+                active=True,
+                label_scale=0.72,
+            )
+            if self.dwell.update_and_draw(frame, [play_btn], hands, dt) == "play_rps":
+                self.start_round()
 
         # Barra caricamento pollice su
         if self._thumb_hold > 0.05 and self.state not in ("COUNTDOWN", "THROW"):
@@ -255,4 +283,4 @@ class RPSGameMode:
             cv2.rectangle(frame, (bx1, by), (bx2, by + 10), (50, 60, 80), -1)
             cv2.rectangle(frame, (bx1, by), (int(bx1 + (bx2 - bx1) * pct), by + 10), COLOR_GREEN, -1)
 
-        return "[SPAZIO] o POLLICE SU = Gioca  |  [C] = Modalita AI segreta"
+        return "Punta su INIZIA SFIDA o fai POLLICE SU per giocare contro l'AI!"

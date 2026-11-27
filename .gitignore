@@ -5,3 +5,4 @@ build/
 dist/
 *.spec
 .DS_Store
+foto_orientamento/
